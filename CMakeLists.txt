@@ -7,6 +7,12 @@ else()
   set(GAIT_CORE_TOP_LEVEL OFF)
 endif()
 
+# Eigen is very slow unoptimised, so default to Release when building this repo on its own
+get_property(GAIT_CORE_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(GAIT_CORE_TOP_LEVEL AND NOT GAIT_CORE_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 option(GAIT_CORE_USE_DOUBLE "Use double instead of float for Scalar (the ROS build turns this on)" OFF)
 option(GAIT_CORE_BUNDLED_EIGEN "Always use third_party/eigen instead of looking for a system Eigen" OFF)
 option(GAIT_CORE_BUILD_TESTS "Build the GoogleTest suite" ${GAIT_CORE_TOP_LEVEL})
