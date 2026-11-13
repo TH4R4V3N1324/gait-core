@@ -45,15 +45,15 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# Library
+# Gait library
 # ---------------------------------------------------------------------------
 add_library(gait_core STATIC
-  src/gait_config.cpp
-  src/gait_engine.cpp
-  src/kinematic_solver.cpp
-  src/leg_odometry.cpp
-  src/robot_geometry.cpp
-  src/trajectory_generator.cpp
+  src/gait/gait_config.cpp
+  src/gait/gait_engine.cpp
+  src/gait/kinematic_solver.cpp
+  src/gait/leg_odometry.cpp
+  src/gait/robot_geometry.cpp
+  src/gait/trajectory_generator.cpp
 )
 add_library(gait_core::gait_core ALIAS gait_core)
 
@@ -77,12 +77,28 @@ if(NOT CMAKE_CROSSCOMPILING)
   set_target_properties(gait_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
+# ---------------------------------------------------------------------------
+# Behaviour library: decisions from sensors (battery so far), on top of the gait's types.
+# Exported as gait_core::behaviour.
+# ---------------------------------------------------------------------------
+add_library(gait_core_behaviour STATIC
+  src/behaviour/battery_monitor.cpp
+)
+add_library(gait_core::behaviour ALIAS gait_core_behaviour)
+set_target_properties(gait_core_behaviour PROPERTIES EXPORT_NAME behaviour)
+target_link_libraries(gait_core_behaviour PUBLIC gait_core)
+if(NOT CMAKE_CROSSCOMPILING)
+  set_target_properties(gait_core_behaviour PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
 if(GAIT_CORE_TOP_LEVEL)
-  if(MSVC)
-    target_compile_options(gait_core PRIVATE /W4)
-  else()
-    target_compile_options(gait_core PRIVATE -Wall -Wextra -Wpedantic -Wdouble-promotion)
-  endif()
+  foreach(target gait_core gait_core_behaviour)
+    if(MSVC)
+      target_compile_options(${target} PRIVATE /W4)
+    else()
+      target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wdouble-promotion)
+    endif()
+  endforeach()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -92,7 +108,7 @@ if(GAIT_CORE_TOP_LEVEL)
   include(GNUInstallDirs)
   include(CMakePackageConfigHelpers)
 
-  set(GAIT_CORE_EXPORT_TARGETS gait_core)
+  set(GAIT_CORE_EXPORT_TARGETS gait_core gait_core_behaviour)
   if(TARGET gait_core_eigen)
     list(APPEND GAIT_CORE_EXPORT_TARGETS gait_core_eigen)
     install(DIRECTORY ${GAIT_CORE_EIGEN_DIR}/Eigen

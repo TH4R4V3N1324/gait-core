@@ -1,23 +1,39 @@
 # hexapod-gait-core
 
-The hexapod gait maths (kinematics, frames, trajectories and leg odometry) as a plain C++17
-library with no ROS, Arduino or Pico SDK dependency.
+The hexapod gait and behaviours as plain C++17 libraries with no ROS, Arduino or Pico SDK
+dependency, so every robot walks and reacts to its sensors the same way.
 
 How this fits with the robots and the other repositories is documented in
 [hexapod-docs](https://github.com/TH4R4V3N1324/hexapod-docs).
 
 ## Contents
 
+Two libraries: the gait (`gait_core`, headers in `include/gait_core/`) and the behaviours built on
+it (`gait_core::behaviour`, headers in `include/hexapod_behaviour/`). The gait doesn't depend on
+the behaviours, so a robot can use the gait alone.
+
+### Gait
+
 | Header | Contents |
 | --- | --- |
 | `gait_engine.hpp` | `GaitEngine`: the whole gait (startup, walking, sit/stand, tilt mode, leveling, load balancing, terrain adaptation, leg odometry). Feed it joint states, IMU and velocity; call `update(dt, now)` each tick for 18 joint targets. Settings in `GaitParams` |
-| `types.hpp` | `Scalar`, `Vec2/Vec3/Mat3`, `kPi`, `VelocityCommand` |
-| `robot_geometry.hpp` | `RobotGeometry`: link lengths, coxa mounts, neutral stance, max stride, joint limits. Presets: `explorer()` |
+| `types.hpp` | `Scalar`, `Vec2/Vec3/Mat3`, `kPi`, `Timestamp`, `LogLevel`, `VelocityCommand` |
+| `robot_geometry.hpp` | `Leg` enum; `RobotGeometry`: link lengths, coxa mounts, neutral stance, max stride, joint limits. Presets: `explorer()` |
 | `kinematic_solver.hpp` | Single-leg IK/FK, Jacobian, foot force from joint torques |
 | `frame_converter.hpp` | Leg frame ↔ body frame |
 | `gait_config.hpp` | Gaits, modes, neutral stance, height/reach |
 | `trajectory_generator.hpp` | Swing Béziers, stance lines, foot displacement, body pose |
 | `leg_odometry.hpp` | Body motion and climb from planted feet |
+
+### Behaviours
+
+Each behaviour takes sensor readings and returns what to do; the robot does it with its own
+hardware (a service call or `GaitEngine::sit`, a controller rumble, a beep, an LED). A robot
+without a sensor just never feeds it, and that behaviour stays idle.
+
+| Header | Contents |
+| --- | --- |
+| `battery_monitor.hpp` | `BatteryMonitor`: filtered voltage from up to 4 power monitors, OK / warning / critical with hysteresis, alert when it gets worse, sit once at critical. Settings in `BatteryParams` |
 
 ## API conventions
 
@@ -55,9 +71,10 @@ FPUs. CI runs the tests with both `float` and `double`, and cross-compiles for C
 
 ## Linking
 
-- **CMake subproject:** `add_subdirectory(path/to/gait_core)` then link `gait_core`.
-- **Installed package (e.g. colcon):** `find_package(gait_core REQUIRED)` then link
-  `gait_core::gait_core`. `package.xml` lets colcon build it as a plain CMake package.
+- **CMake subproject:** `add_subdirectory(path/to/gait_core)` then link `gait_core::gait_core`
+  and/or `gait_core::behaviour`.
+- **Installed package (e.g. colcon):** `find_package(gait_core REQUIRED)` then link the same
+  targets. `package.xml` lets colcon build it as a plain CMake package.
 - **PlatformIO:** `library.json` is provided, so it works from `lib/` or `lib_deps`.
 
 ## Versioning

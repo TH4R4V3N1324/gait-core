@@ -49,7 +49,7 @@ jobs:
       - name: Compile
         run: |
           mkdir -p build-arm
-          for f in src/*.cpp; do
+          for f in src/*/*.cpp; do
             arm-none-eabi-g++ -mcpu=cortex-m0plus -mthumb -std=gnu++17 -Os \
               -fno-exceptions -fno-rtti -DEIGEN_NO_DEBUG \
               -Wall -Wextra -Wdouble-promotion \

@@ -1,4 +1,4 @@
-// Checks the engine never allocates once it's running, so it's safe on microcontrollers.
+// Checks the engine and the behaviours never allocate once running, so they're safe on microcontrollers.
 // Replaces the global operator new for this test binary only, counting every allocation.
 
 #include <gtest/gtest.h>
@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "gait_core/gait_engine.hpp"
+#include "hexapod_behaviour/battery_monitor.hpp"
 
 namespace {
 std::atomic<long> allocations{0};
@@ -161,4 +162,31 @@ TEST(NoHeap, RunningTheGaitNeverAllocates) {
     EXPECT_EQ(allocations.load() - before, 0) << "allocations while running the gait";
     EXPECT_GT(logged, 5) << "the log hook should have been called (gait changes, tilt, sitting)";
     EXPECT_GT(robot.engine.odometry().x(), 0.2) << "the robot should have walked";
+}
+
+TEST(NoHeap, TheBatteryMonitorNeverAllocates) {
+    using hexapod_behaviour::BatteryLevel;
+    hexapod_behaviour::BatteryMonitor battery(2);
+    int logs = 0;
+    battery.log = [&logs](LogLevel, const char*) { ++logs; };
+
+    const long before = allocations.load();
+    Timestamp now = 1'000'000'000;
+    BatteryLevel worst = BatteryLevel::Ok;
+    // Run the battery down through warning to critical, sit, then charge it back up
+    for (int i = 0; i < 2000; ++i) {
+        now += 100'000'000;
+        const Scalar volts = i < 1000 ? Scalar(11.5) - Scalar(0.002) * static_cast<Scalar>(i) : Scalar(11.5);
+        battery.onReading(0, volts, Scalar(-2), now);
+        battery.onReading(1, volts + Scalar(0.1), Scalar(-2), now);
+        const auto status = battery.update(now);
+        worst = std::max(worst, status.level);
+        if (status.sit) {
+            battery.sitRequested();
+        }
+    }
+    EXPECT_EQ(allocations.load() - before, 0) << "allocations while monitoring the battery";
+    EXPECT_EQ(worst, BatteryLevel::Critical);
+    EXPECT_EQ(battery.level(), BatteryLevel::Ok);
+    EXPECT_GE(logs, 3);
 }

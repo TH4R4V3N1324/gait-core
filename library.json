@@ -1,7 +1,7 @@
 {
   "name": "gait_core",
   "version": "0.1.0",
-  "description": "ROS-free hexapod gait core: kinematics, frames, trajectories and odometry.",
+  "description": "ROS-free hexapod gait and behaviour core: kinematics, frames, trajectories, odometry and battery behaviour.",
   "license": "Apache-2.0",
   "frameworks": "*",
   "platforms": "*",

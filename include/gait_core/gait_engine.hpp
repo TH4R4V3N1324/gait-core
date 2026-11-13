@@ -15,18 +15,6 @@
 namespace gait_core {
 
 /**
- * @brief A point in time, in nanoseconds from any fixed origin (ROS time, or micros() * 1000)
-*/
-using Timestamp = int64_t;
-
-/**
- * @brief Length of a time interval in seconds
-*/
-inline double toSeconds(Timestamp interval) {
-    return static_cast<double>(interval) / 1e9;
-}
-
-/**
  * @brief Every setting of the gait, in SI units. Defaults are the hexapod-ros2 parameter defaults.
  * @note The ones marked "live" can be changed while running through GaitEngine::params().
 */
@@ -98,8 +86,6 @@ enum class SitState : uint8_t {
     RAISING,    // lifting the body back to its standing height
     GATHERING   // stepping the feet back in to the standing reach
 };
-
-enum class LogLevel : uint8_t { Debug, Info, Warn };
 
 /**
  * @brief Measured joint state of every leg

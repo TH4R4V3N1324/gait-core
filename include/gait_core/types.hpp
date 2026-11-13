@@ -1,6 +1,8 @@
 #ifndef GAIT_CORE__TYPES_HPP
 #define GAIT_CORE__TYPES_HPP
 
+#include <cstdint>
+
 #include <Eigen/Dense>
 
 /**
@@ -24,6 +26,23 @@ using Rotation2D = Eigen::Rotation2D<Scalar>;
 
 // M_PI is not standard C++ (MSVC and some embedded toolchains hide it)
 inline constexpr Scalar kPi = static_cast<Scalar>(3.14159265358979323846);
+
+/**
+ * @brief A point in time, in nanoseconds from any fixed origin (ROS time, or micros() * 1000)
+*/
+using Timestamp = int64_t;
+
+/**
+ * @brief Length of a time interval in seconds
+*/
+inline double toSeconds(Timestamp interval) {
+    return static_cast<double>(interval) / 1e9;
+}
+
+/**
+ * @brief How serious a log message is; each robot maps these onto its own logging
+*/
+enum class LogLevel : uint8_t { Debug, Info, Warn, Error };
 
 /**
  * @brief Commanded body velocity, in the body frame
