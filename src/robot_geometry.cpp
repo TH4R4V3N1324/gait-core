@@ -27,6 +27,14 @@ RobotGeometry RobotGeometry::explorer() {
     g.standHeight = static_cast<Scalar>(-0.134);
 
     g.maxStride = static_cast<Scalar>(0.06);
+
+    // The femur and tibia ranges match femur_lower/upper and tibia_lower/upper in the URDF (from the
+    // CAD meshes); the coxa keeps +-1.4 rad until its range is worked out
+    g.limits.coxaMax  = static_cast<Scalar>(1.4);
+    g.limits.femurMin = static_cast<Scalar>(-1.6);
+    g.limits.femurMax = static_cast<Scalar>(1.4);
+    g.limits.tibiaMin = static_cast<Scalar>(-0.78);
+    g.limits.tibiaMax = static_cast<Scalar>(2.63);
     return g;
 }
 

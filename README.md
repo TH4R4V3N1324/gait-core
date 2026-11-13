@@ -10,8 +10,9 @@ How this fits with the robots and the other repositories is documented in
 
 | Header | Contents |
 | --- | --- |
+| `gait_engine.hpp` | `GaitEngine`: the whole gait (startup, walking, sit/stand, tilt mode, leveling, load balancing, terrain adaptation, leg odometry). Feed it joint states, IMU and velocity; call `update(dt, now)` each tick for 18 joint targets. Settings in `GaitParams` |
 | `types.hpp` | `Scalar`, `Vec2/Vec3/Mat3`, `kPi`, `VelocityCommand` |
-| `robot_geometry.hpp` | `RobotGeometry`: link lengths, coxa mounts, neutral stance, max stride. Presets: `explorer()` |
+| `robot_geometry.hpp` | `RobotGeometry`: link lengths, coxa mounts, neutral stance, max stride, joint limits. Presets: `explorer()` |
 | `kinematic_solver.hpp` | Single-leg IK/FK, Jacobian, foot force from joint torques |
 | `frame_converter.hpp` | Leg frame ↔ body frame |
 | `gait_config.hpp` | Gaits, modes, neutral stance, height/reach |

@@ -74,7 +74,7 @@ public:
     Mode currentMode = MODE_NORMAL;
     bool gaitChangeRequested = false;
     Gait pendingGait = GAIT_TRIPOD;
-    std::vector<std::vector<int>> getGaitConfig(Gait gait);
+    std::vector<std::vector<int>> getGaitConfig(Gait gait) const;
     void cycleGait();
     void setGait(Gait gait);
     void cycleMode();

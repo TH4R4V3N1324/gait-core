@@ -49,6 +49,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(gait_core STATIC
   src/gait_config.cpp
+  src/gait_engine.cpp
   src/kinematic_solver.cpp
   src/leg_odometry.cpp
   src/robot_geometry.cpp

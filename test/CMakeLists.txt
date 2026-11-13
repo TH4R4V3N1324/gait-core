@@ -16,6 +16,7 @@ set(GAIT_CORE_TESTS
   test_body_pose
   test_foot_directions
   test_foot_force
+  test_gait_engine
   test_kinematics
   test_leg_clearance
   test_leg_odometry

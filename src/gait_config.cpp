@@ -16,7 +16,7 @@ GaitConfig::GaitConfig(const RobotGeometry& geometry)
  * @param[in] gait The gait type
  * @return The groups of legs that swing together, in phase order
 */
-std::vector<std::vector<int>> GaitConfig::getGaitConfig(Gait gait) {
+std::vector<std::vector<int>> GaitConfig::getGaitConfig(Gait gait) const {
     switch (gait) {
         case GAIT_TRIPOD:
             return {{1, 3, 5}, {2, 4, 6}};
