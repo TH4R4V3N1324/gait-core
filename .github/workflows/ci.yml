@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }}, ${{ matrix.scalar }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        scalar: [float, double]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DGAIT_CORE_BUNDLED_EIGEN=ON
+          -DGAIT_CORE_USE_DOUBLE=${{ matrix.scalar == 'double' && 'ON' || 'OFF' }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  # Compile-only check with the flags the Servo2040 (RP2040, Cortex-M0+, no FPU) firmware uses,
+  # so anything that won't build bare-metal (exceptions, RTTI, OS headers) fails here first
+  arm-cortex-m0plus:
+    name: Cross-compile (arm-none-eabi, Cortex-M0+)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+
+      - name: Compile
+        run: |
+          mkdir -p build-arm
+          for f in src/*.cpp; do
+            arm-none-eabi-g++ -mcpu=cortex-m0plus -mthumb -std=gnu++17 -Os \
+              -fno-exceptions -fno-rtti -DEIGEN_NO_DEBUG \
+              -Wall -Wextra -Wdouble-promotion \
+              -Iinclude -isystem third_party/eigen \
+              -c "$f" -o "build-arm/$(basename "$f" .cpp).o"
+          done
+          arm-none-eabi-ar rcs build-arm/libgait_core.a build-arm/*.o
+          arm-none-eabi-size -t build-arm/*.o

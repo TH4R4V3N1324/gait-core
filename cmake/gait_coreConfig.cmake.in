@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+if(@GAIT_CORE_EIGEN_FROM_SYSTEM@)
+  find_dependency(Eigen3 3.3 NO_MODULE)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/gait_coreTargets.cmake")
+check_required_components(gait_core)

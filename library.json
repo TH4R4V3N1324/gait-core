@@ -1,0 +1,20 @@
+{
+  "name": "gait_core",
+  "version": "0.1.0",
+  "description": "ROS-free hexapod gait core: kinematics, frames, trajectories and odometry.",
+  "license": "Apache-2.0",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "include",
+    "flags": [
+      "-I third_party/eigen",
+      "-DEIGEN_NO_DEBUG",
+      "-std=gnu++17"
+    ]
+  },
+  "export": {
+    "exclude": ["test", ".github", "third_party/eigen/test", "third_party/eigen/doc"]
+  }
+}
