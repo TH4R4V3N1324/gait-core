@@ -158,6 +158,10 @@ TEST(NoHeap, RunningTheGaitNeverAllocates) {
     robot.run(6.0);
     robot.engine.sit(false);
     robot.run(6.0);
+    robot.engine.powerDown();   // sit, servos off (rebuilds the engine's state)
+    robot.run(8.0);
+    robot.engine.sit(false);    // power up, startup, stand
+    robot.run(10.0);
 
     EXPECT_EQ(allocations.load() - before, 0) << "allocations while running the gait";
     EXPECT_GT(logged, 5) << "the log hook should have been called (gait changes, tilt, sitting)";

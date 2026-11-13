@@ -28,6 +28,7 @@ struct BatteryParams {
     Scalar filter_time = Scalar(5.0);        // s, time constant of the voltage filter, so walking doesn't trip it
     Scalar stale_timeout = Scalar(2.0);      // s, a monitor with no reading for this long is ignored
     bool auto_sit = true;                    // sit down at critical
+    bool power_off = true;                   // ... and then turn the servo power off (GaitEngine::powerDown)
 };
 
 /**
@@ -51,15 +52,17 @@ struct BatteryStatus {
     bool changed = false;    // the level changed this update
     bool worsened = false;   // the level got worse this update: alert the operator (rumble, beep, LED)
     bool sit = false;        // sit the robot down; call sitRequested() once the request has gone out
+    bool powerOff = false;   // with sit: power the servos off once seated (GaitEngine::powerDown instead of sit)
 };
 
 /**
  * @brief Watches the battery through one or more power monitors and decides when to warn and sit
  * @note The lowest monitor's voltage, low-pass filtered, sets the level, with hysteresis so it
  *       doesn't flicker at a threshold. Without recent readings the level holds: a dropped
- *       connection is no reason to sit down or to clear a warning. Critical asks for the robot to
- *       sit once; it never stands it back up, since standing it up while critical is the
- *       operator's override. A robot without a power monitor just never calls onReading.
+ *       connection is no reason to sit down or to clear a warning. Critical asks once for the robot
+ *       to sit and, with power_off, turn the servos off; it never stands it back up, since standing
+ *       it up while critical is the operator's override. A robot without a power monitor just
+ *       never calls onReading.
 */
 class BatteryMonitor {
 public:

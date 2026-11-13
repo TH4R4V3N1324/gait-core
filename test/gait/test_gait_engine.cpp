@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <string>
 
 #include "test_common.hpp"
 #include "gait_core/gait_engine.hpp"
@@ -8,6 +9,7 @@
 using gait_core::CommandResult;
 using gait_core::GaitEngine;
 using gait_core::GaitOutput;
+using gait_core::GaitParams;
 using gait_core::JointFeedback;
 using gait_core::NUM_LEGS;
 using gait_core::Scalar;
@@ -21,6 +23,8 @@ constexpr Timestamp DT_NS = 10'000'000;
 
 /**
  * @brief Runs an engine with perfect servos: every command comes straight back as the joint state
+ * @note The servos only answer while the engine wants them powered and the e-stop is released,
+ *       like the leg hubs' SERVO_EN and kill loop
 */
 class Robot {
 public:
@@ -28,8 +32,10 @@ public:
     Timestamp now = 1'000'000'000;
     JointFeedback feedback;
     int commandedTicks = 0;
+    bool estop = false;
+    bool servoPower;   // what the engine last asked for
 
-    Robot() {
+    explicit Robot(const GaitParams& params = GaitParams{}) : engine(params), servoPower(params.power_on_startup) {
         // Legs laid out flat at their zeros
         for (int leg = 0; leg < NUM_LEGS; ++leg) {
             feedback.present[leg] = true;
@@ -37,13 +43,25 @@ public:
         }
     }
 
+    /**
+     * @brief The robot slumps onto its belly with its legs at their zeros
+    */
+    void collapse() {
+        for (int leg = 0; leg < NUM_LEGS; ++leg) {
+            feedback.angles[leg] = {0, 0, 0};
+        }
+    }
+
     void run(double seconds) {
         const int ticks = static_cast<int>(std::lround(seconds / 0.01));
         for (int i = 0; i < ticks; ++i) {
-            feedback.stamp = now;
-            engine.onJointStates(feedback);
+            if (servoPower && !estop) {
+                feedback.stamp = now;
+                engine.onJointStates(feedback);
+            }
             now += DT_NS;
             const GaitOutput out = engine.update(DT, now);
+            servoPower = out.servoPower;
             if (out.commanded) {
                 ++commandedTicks;
                 for (int leg = 0; leg < NUM_LEGS; ++leg) {
@@ -110,6 +128,106 @@ TEST(GaitEngine, TurningLeftTurnsTheOdometryAnticlockwise) {
     robot.run(4.0);
     EXPECT_GT(robot.engine.odometry().yaw(), 0.5);
     EXPECT_NEAR(robot.engine.odometry().x(), 0.0, 0.03);
+}
+
+/**
+ * @brief A robot that's been through startup and is standing
+*/
+Robot standingRobot(const GaitParams& params = GaitParams{}) {
+    Robot robot(params);
+    robot.run(3.0);
+    robot.engine.sit(false);
+    robot.run(6.0);
+    return robot;
+}
+
+TEST(GaitEngine, ServosStayOffUntilTheFirstStand) {
+    GaitParams params;
+    params.power_on_startup = false;
+    Robot robot(params);
+    robot.run(3.0);
+    EXPECT_FALSE(robot.servoPower);
+    EXPECT_EQ(robot.commandedTicks, 0) << "nothing is commanded while the servos are off";
+    EXPECT_FALSE(robot.engine.initialized());
+
+    const CommandResult stand = robot.engine.sit(false);
+    EXPECT_TRUE(stand.success);
+    EXPECT_NE(std::string(stand.message).find("powering"), std::string::npos) << stand.message;
+    robot.run(9.0);
+    EXPECT_TRUE(robot.servoPower);
+    EXPECT_TRUE(robot.engine.initialized());
+    EXPECT_EQ(robot.engine.sitState(), SitState::STANDING) << "one stand command: power up, seated pose, stand";
+}
+
+TEST(GaitEngine, PowerDownSitsThenTurnsTheServosOff) {
+    Robot robot = standingRobot();
+    ASSERT_EQ(robot.engine.sitState(), SitState::STANDING);
+    EXPECT_TRUE(robot.engine.powerDown().success);
+    robot.run(0.5);
+    EXPECT_TRUE(robot.servoPower) << "still powered while sitting down";
+    robot.run(8.0);
+    EXPECT_FALSE(robot.servoPower);
+    EXPECT_TRUE(robot.engine.seated());
+    EXPECT_NEAR(gait_core::KinematicSolver().solveFK(robot.feedback.angles[0]).z(), -robot.engine.params().sit_height, 1e-3)
+        << "the servos went off with the robot seated";
+
+    const int commanded = robot.commandedTicks;
+    robot.run(2.0);
+    EXPECT_EQ(robot.commandedTicks, commanded);
+    EXPECT_STREQ(robot.engine.powerDown().message, "servos already off");
+
+    // Standing powers back up
+    robot.engine.sit(false);
+    robot.run(10.0);
+    EXPECT_TRUE(robot.servoPower);
+    EXPECT_EQ(robot.engine.sitState(), SitState::STANDING);
+}
+
+TEST(GaitEngine, StandingUpBeforeTheServosGoOffCancelsThePowerDown) {
+    Robot robot = standingRobot();
+    robot.engine.powerDown();
+    robot.run(1.0);
+    robot.engine.sit(false);
+    robot.run(10.0);
+    EXPECT_TRUE(robot.servoPower);
+    EXPECT_EQ(robot.engine.sitState(), SitState::STANDING);
+}
+
+TEST(GaitEngine, LosingTheServosWaitsForAStandBeforeMovingAgain) {
+    Robot robot = standingRobot();
+    int seatedReports = 0;
+    robot.engine.seatedChanged = [&seatedReports](bool seated) { seatedReports += seated ? 1 : 0; };
+
+    // E-stop: the servos stop answering and the robot collapses
+    robot.estop = true;
+    robot.run(1.0);
+    EXPECT_FALSE(robot.servoPower);
+    EXPECT_TRUE(robot.engine.seated());
+    EXPECT_EQ(seatedReports, 1);
+    robot.collapse();
+
+    // Releasing the e-stop moves nothing by itself
+    robot.estop = false;
+    const int commanded = robot.commandedTicks;
+    robot.run(2.0);
+    EXPECT_EQ(robot.commandedTicks, commanded);
+
+    // A stand starts again from where the legs are now, through the seated pose
+    robot.engine.sit(false);
+    robot.run(0.3);
+    EXPECT_TRUE(robot.engine.seated());
+    robot.run(10.0);
+    EXPECT_EQ(robot.engine.sitState(), SitState::STANDING);
+}
+
+TEST(GaitEngine, JointStatesThatKeepComingNeverCountAsAPowerLoss) {
+    GaitParams params;
+    params.servo_loss_timeout = static_cast<Scalar>(0.05);
+    Robot robot = standingRobot(params);
+    robot.engine.setVelocity({static_cast<Scalar>(0.1), 0, 0});
+    robot.run(3.0);
+    EXPECT_TRUE(robot.servoPower);
+    EXPECT_EQ(robot.engine.sitState(), SitState::STANDING);
 }
 
 TEST(GaitEngine, EveryCommandIsReachable) {

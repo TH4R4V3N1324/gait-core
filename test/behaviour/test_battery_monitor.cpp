@@ -151,6 +151,23 @@ TEST(BatteryMonitor, LeavingCriticalBeforeTheSitWentOutCancelsIt) {
     EXPECT_TRUE(battery.hold(9.5, 30).sit);
 }
 
+TEST(BatteryMonitor, CriticalAlsoAsksToPowerOffUnlessTurnedOff) {
+    Battery battery;
+    BatteryStatus status = battery.hold(9.5, 30);
+    EXPECT_TRUE(status.sit);
+    EXPECT_TRUE(status.powerOff);
+    EXPECT_NE(battery.logs.back().second.find("turning the servos off"), std::string::npos);
+
+    BatteryParams params;
+    params.power_off = false;
+    Battery sitOnly(1, params);
+    status = sitOnly.hold(9.5, 30);
+    EXPECT_TRUE(status.sit);
+    EXPECT_FALSE(status.powerOff);
+    battery.monitor.sitRequested();
+    EXPECT_FALSE(battery.monitor.update(battery.now).powerOff) << "only asked for with the sit";
+}
+
 TEST(BatteryMonitor, AutoSitOffOnlyWarns) {
     BatteryParams params;
     params.auto_sit = false;

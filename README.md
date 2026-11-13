@@ -16,7 +16,7 @@ the behaviours, so a robot can use the gait alone.
 
 | Header | Contents |
 | --- | --- |
-| `gait_engine.hpp` | `GaitEngine`: the whole gait (startup, walking, sit/stand, tilt mode, leveling, load balancing, terrain adaptation, leg odometry). Feed it joint states, IMU and velocity; call `update(dt, now)` each tick for 18 joint targets. Settings in `GaitParams` |
+| `gait_engine.hpp` | `GaitEngine`: the whole gait (startup, walking, sit/stand, tilt mode, leveling, load balancing, terrain adaptation, leg odometry). Feed it joint states, IMU and velocity; call `update(dt, now)` each tick for 18 joint targets, and `servoPower` to drive a servo power switch (unpowered until the first stand with `power_on_startup` off; `powerDown()` sits then switches off; losing the servos switches off too). Settings in `GaitParams` |
 | `types.hpp` | `Scalar`, `Vec2/Vec3/Mat3`, `kPi`, `Timestamp`, `LogLevel`, `VelocityCommand` |
 | `robot_geometry.hpp` | `Leg` enum; `RobotGeometry`: link lengths, coxa mounts, neutral stance, max stride, joint limits. Presets: `explorer()` |
 | `kinematic_solver.hpp` | Single-leg IK/FK, Jacobian, foot force from joint torques |

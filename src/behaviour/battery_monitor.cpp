@@ -71,6 +71,7 @@ BatteryStatus BatteryMonitor::update(Timestamp now) {
     }
     status.level = level_;
     status.sit = level_ == BatteryLevel::Critical && sit_pending;
+    status.powerOff = status.sit && p.power_off;
     return status;
 }
 
@@ -104,7 +105,7 @@ BatteryLevel BatteryMonitor::levelFor(Scalar voltage) const {
  * @param[in] voltage The voltage that caused it (V)
 */
 void BatteryMonitor::levelChanged(BatteryLevel previous, Scalar voltage) {
-    char message[64];
+    char message[96];
     LogLevel severity = LogLevel::Info;
     const double v = static_cast<double>(voltage);
     switch (level_) {
@@ -121,7 +122,8 @@ void BatteryMonitor::levelChanged(BatteryLevel previous, Scalar voltage) {
             break;
         case BatteryLevel::Critical:
             severity = LogLevel::Error;
-            std::snprintf(message, sizeof(message), "Battery critical (%.2f V)%s", v, p.auto_sit ? ", sitting down" : "");
+            std::snprintf(message, sizeof(message), "Battery critical (%.2f V)%s", v,
+                !p.auto_sit ? "" : p.power_off ? ", sitting down and turning the servos off" : ", sitting down");
             break;
     }
     sit_pending = level_ == BatteryLevel::Critical && p.auto_sit;

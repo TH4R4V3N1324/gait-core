@@ -72,6 +72,12 @@ struct GaitParams {
     Scalar sit_height = Scalar(0.015);          // m, feet below the hips while seated (positive)
     bool stand_on_startup = false;      // stand up as soon as startup has seated the robot
 
+    // Servo power (a robot that switches it, like the leg hubs' SERVO_EN)
+    bool power_on_startup = true;       // servos powered from the start (simulation, or no power switch);
+                                        // false keeps them off until the first stand command
+    Scalar servo_loss_timeout = Scalar(0.5);    // s without a full joint state, once running, before the servos
+                                                // count as unpowered (e-stop); 0 never
+
     // Leveling while walking (live)
     bool walk_leveling = true;          // hold the body level with the IMU while walking
     Scalar walk_level_gain = Scalar(2.0);       // 1/s, how fast the correction responds
@@ -120,8 +126,9 @@ struct CommandResult {
  * @brief What one update produced
 */
 struct GaitOutput {
-    bool commanded = false;                           // false while waiting for joint states
+    bool commanded = false;                           // false while waiting for joint states or unpowered
     std::array<JointAngles, NUM_LEGS> joints{};  // rad, indexed by Leg
+    bool servoPower = false;                          // whether the servos should be powered (drive SERVO_EN from this)
 };
 
 /**
@@ -152,6 +159,14 @@ public:
  *       commands as they arrive. Every update() returns all 18 joint targets once the joint states
  *       have arrived. Optional inputs (efforts, IMU) can simply never be given: the features that
  *       need them stay off.
+ *
+ *       Servo power: GaitOutput::servoPower says whether the servos should be powered. Unpowered,
+ *       the engine commands nothing; a stand command powers them, waits for fresh joint states, moves
+ *       the legs from wherever they are to the seated pose, then stands. powerDown() sits and then
+ *       turns them off. Losing them unasked (no full joint state for servo_loss_timeout, or
+ *       servoPowerLost()) turns power off too, so releasing an e-stop never moves the robot by itself.
+ *       While the servos are unpowered or not answering, the robot should report those joints as
+ *       not present rather than repeat stale angles.
 */
 class GaitEngine {
 public:
@@ -169,12 +184,14 @@ public:
      * @return true if the leg odometry moved on (see odometry())
     */
     bool onJointStates(const JointFeedback& feedback);
+    void servoPowerLost();
 
     // ---- Commands ---------------------------------------------------------------------------
     CommandResult setGait(uint8_t gait);
     CommandResult setMode(uint8_t mode);
     CommandResult setHeight(Scalar height);  // feet z below the hips, negative
     CommandResult sit(bool down);
+    CommandResult powerDown();
     void setBodyPose(Scalar roll, Scalar pitch, Scalar yaw, const Vec3& translation);
 
     // ---- Tick -------------------------------------------------------------------------------
@@ -194,6 +211,7 @@ public:
     SitState sitState() const { return sit_state; }
     bool initialized() const { return positions_initialized; }
     bool seated() const { return sit_state != SitState::STANDING; }
+    bool servoPower() const { return servo_power; }
     bool blocked() const { return is_blocked; }
     const Vec3& measuredFoot(int legNum) const { return measured_leg_positions[legNum]; }
     const Vec3& footForce(int legNum) const { return foot_forces[legNum]; }
@@ -211,6 +229,7 @@ public:
 
 private:
     GaitParams p;
+    RobotGeometry robot_geometry;   // kept so cutting servo power can rebuild the engine
     TrajectoryGenerator trajectoryGen;
     GaitConfig config;
     KinematicSolver ikSolver;
@@ -234,6 +253,12 @@ private:
 
     bool has_joint_states = false;
     bool positions_initialized = false;
+
+    // Servo power
+    bool servo_power = true;
+    bool power_down_pending = false;   // seat, then turn the servos off
+    bool full_state_since_update = false;  // a full joint state arrived since the last update
+    Timestamp last_full_state = 0;     // update time at which the latest full joint state had arrived
     bool idleReturning = false;
 
     struct MotionIntent {
@@ -321,8 +346,10 @@ private:
     bool has_previous_feet = false;
 
     // Throttled log messages: when each was last sent
-    std::array<Timestamp, 4> last_throttled_log{};
-    bool throttled_log_sent[4] = {false, false, false, false};
+    std::array<Timestamp, 5> last_throttled_log{};
+    std::array<bool, 5> throttled_log_sent{};
+
+    void cutServoPower();
 
     // Log a printf-style message; nothing is formatted unless log is set (and, throttled, due)
     void emit(LogLevel level, const char* format, ...);

@@ -31,11 +31,13 @@ constexpr int LOG_WAITING_FOR_JOINTS = 0;
 constexpr int LOG_SWING_LOWERED = 1;
 constexpr int LOG_TILT_LIMITED = 2;
 constexpr int LOG_INVALID_MODE = 3;
+constexpr int LOG_SERVOS_OFF = 4;
 
 }  // namespace
 
 GaitEngine::GaitEngine(const GaitParams& params, const RobotGeometry& geometry)
-    : p(params), trajectoryGen(geometry), config(geometry), ikSolver(geometry), limits(geometry.limits) {
+    : p(params), robot_geometry(geometry), trajectoryGen(geometry), config(geometry), ikSolver(geometry),
+      limits(geometry.limits), servo_power(params.power_on_startup) {
     if (p.initial_mode >= NUM_MODES) {
         p.initial_mode = MODE_NORMAL;
     }
@@ -134,6 +136,7 @@ bool GaitEngine::onJointStates(const JointFeedback& feedback) {
         measured_leg_positions[legNum] = ikSolver.solveFK(feedback.angles[legNum]);
     }
     has_joint_states = all_found;
+    full_state_since_update = full_state_since_update || all_found;
     if (all_found && feedback.hasEffort) {
         updateFootForces(feedback);
     }
@@ -427,11 +430,23 @@ CommandResult GaitEngine::sit(bool down) {
         }
         setMessage(result, "sitting down");
     } else {
+        // Standing up cancels a power down; unpowered, it powers the servos and startup takes it from there
+        power_down_pending = false;
+        const bool poweringUp = !servo_power;
+        if (poweringUp) {
+            servo_power = true;
+            has_joint_states = false;   // wait for joint states from the powered servos
+        }
         switch (sit_state) {
             case SitState::SEATED:
             case SitState::LOWERING:
                 target_height = stand_height;
                 sit_state = SitState::RAISING;
+                if (poweringUp) {
+                    setMessage(result, "powering the servos, then standing up");
+                    emit(LogLevel::Info, "%s", result.message);
+                    return result;   // seated() hasn't changed: startup reports it once it stands
+                }
                 break;
             case SitState::SPREADING:
                 config.setReach(stand_reach);
@@ -450,6 +465,72 @@ CommandResult GaitEngine::sit(bool down) {
     }
     emit(LogLevel::Info, "%s", result.message);
     return result;
+}
+
+/**
+ * @brief Sit down, then turn the servo power off once seated
+ * @note A stand command before it's off cancels it; one after powers the servos back up.
+*/
+CommandResult GaitEngine::powerDown() {
+    CommandResult result;
+    if (!servo_power) {
+        result.success = true;
+        setMessage(result, "servos already off");
+        return result;
+    }
+    const CommandResult sat = sit(true);
+    if (!sat.success) {
+        return sat;
+    }
+    power_down_pending = true;
+    result.success = true;
+    setMessage(result, sit_state == SitState::SEATED && positions_initialized
+        ? "turning the servos off" : "sitting down, then turning the servos off");
+    emit(LogLevel::Info, "%s", result.message);
+    return result;
+}
+
+/**
+ * @brief The servos lost power without being asked (e-stop, kill loop, brownout)
+ * @note Turns servo power off, so nothing moves when the power comes back until a stand command.
+ *       The engine notices by itself after servo_loss_timeout without joint states; call this when
+ *       the hardware knows sooner.
+*/
+void GaitEngine::servoPowerLost() {
+    if (!servo_power) {
+        return;
+    }
+    emit(LogLevel::Warn, "Servo power lost: send a stand command to power up and stand again");
+    cutServoPower();
+}
+
+/**
+ * @brief Turn servo power off and go back to how the engine starts, so the next power up runs
+ *        startup again from wherever the legs are
+ * @note Keeps the settings, hooks, odometry, IMU, gait choice and standing height.
+*/
+void GaitEngine::cutServoPower() {
+    const bool wasSeated = seated();
+    GaitEngine fresh(p, robot_geometry);
+    fresh.log = std::move(log);
+    fresh.seatedChanged = std::move(seatedChanged);
+    fresh.footholdPlanner = footholdPlanner;
+    fresh.legOdometry = legOdometry;
+    fresh.body_roll = body_roll;
+    fresh.body_pitch = body_pitch;
+    fresh.body_yaw = body_yaw;
+    fresh.last_imu_time = last_imu_time;
+    fresh.has_imu = has_imu;
+    fresh.stand_height = stand_height;
+    fresh.config.setGait(config.currentGait);
+    fresh.last_throttled_log = last_throttled_log;
+    fresh.throttled_log_sent = throttled_log_sent;
+    fresh.now_ = now_;
+    fresh.servo_power = false;
+    *this = std::move(fresh);
+    if (!wasSeated && seatedChanged) {
+        seatedChanged(true);
+    }
 }
 
 /**
@@ -480,7 +561,26 @@ Scalar GaitEngine::maxFootSpeed() const {
 
 GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
     now_ = now;
+    if (full_state_since_update) {
+        last_full_state = now;
+        full_state_since_update = false;
+    }
+
+    // Servos that stopped answering lost their power (e-stop): don't move when it comes back
+    if (servo_power && positions_initialized && p.servo_loss_timeout > 0 &&
+        toSeconds(now - last_full_state) > static_cast<double>(p.servo_loss_timeout)) {
+        emit(LogLevel::Warn, "No joint states for %.1f s: servo power lost (e-stop?). "
+            "Send a stand command to power up and stand again", toSeconds(now - last_full_state));
+        cutServoPower();
+    }
+    // Powering down: off once seated
+    if (power_down_pending && positions_initialized && sit_state == SitState::SEATED) {
+        emit(LogLevel::Info, "Seated: servos off");
+        cutServoPower();
+    }
+
     output.commanded = false;
+    output.servoPower = servo_power;
     trajectoryGen.swingLift = p.step_height;
     trajectoryGen.swingEasing = p.swing_easing;
 
@@ -583,6 +683,10 @@ void GaitEngine::sendFootTargets(const std::array<Vec3, NUM_LEGS>& targets, Scal
  *       (or a stand was asked for meanwhile); otherwise it waits for one.
 */
 bool GaitEngine::startup(Scalar dt) {
+    if (!servo_power) {
+        emitThrottled(LOG_SERVOS_OFF, 30, LogLevel::Info, "Servos off: send a stand command to power them up");
+        return false;
+    }
     if (!startup_planned) {
         if (!has_joint_states) {
             emitThrottled(LOG_WAITING_FOR_JOINTS, 5, LogLevel::Info, "Waiting for joint states from all 18 joints");
