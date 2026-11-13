@@ -13,13 +13,12 @@ RobotGeometry RobotGeometry::explorer() {
     const Scalar m  = static_cast<Scalar>(0.11836);
     const Scalar cx = static_cast<Scalar>(0.11916);
     const Scalar cy = static_cast<Scalar>(0.08952);
-    g.legs[0] = {0, Vec3::Zero()};
-    g.legs[1] = {-kPi / 4, Vec3(cx, -cy, 0)};       // front right
-    g.legs[2] = {-kPi / 2, Vec3(0, -m, 0)};         // middle right
-    g.legs[3] = {-3 * kPi / 4, Vec3(-cx, -cy, 0)};  // rear right
-    g.legs[4] = {3 * kPi / 4, Vec3(-cx, cy, 0)};    // rear left
-    g.legs[5] = {kPi / 2, Vec3(0, m, 0)};           // middle left
-    g.legs[6] = {kPi / 4, Vec3(cx, cy, 0)};         // front left
+    g.legs[LEG_FRONT_RIGHT]  = {-kPi / 4, Vec3(cx, -cy, 0)};
+    g.legs[LEG_MIDDLE_RIGHT] = {-kPi / 2, Vec3(0, -m, 0)};
+    g.legs[LEG_REAR_RIGHT]   = {-3 * kPi / 4, Vec3(-cx, -cy, 0)};
+    g.legs[LEG_REAR_LEFT]    = {3 * kPi / 4, Vec3(-cx, cy, 0)};
+    g.legs[LEG_MIDDLE_LEFT]  = {kPi / 2, Vec3(0, m, 0)};
+    g.legs[LEG_FRONT_LEFT]   = {kPi / 4, Vec3(cx, cy, 0)};
 
     // Each foot straight out from its coxa (so the corner feet
     // sit at 45 degrees), 0.177 m out and 0.134 m below the hips

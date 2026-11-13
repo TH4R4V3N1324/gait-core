@@ -8,22 +8,22 @@
 
 using gait_core::BodyPose;
 using gait_core::GaitConfig;
-using gait_core::MAX_LEGS;
+using gait_core::NUM_LEGS;
 using gait_core::TrajectoryGenerator;
 using Vector3d = gait_core::Vec3;
 
-// Legs 1-3 are on the right, 4-6 on the left; 1 and 6 at the front, 3 and 4 at the rear
+// Legs run clockwise from the front right: the first three on the right, the last three on the left
 
 /**
  * @brief Each foot's position (leg frame) after the body takes up a pose over the start positions
  * @param[in] pose The body pose
- * @return The foot position of each leg, indexed by leg number
+ * @return The foot position of each leg, indexed by Leg
 */
-static std::array<Vector3d, MAX_LEGS + 1> feetFor(const BodyPose& pose) {
+static std::array<Vector3d, NUM_LEGS> feetFor(const BodyPose& pose) {
     TrajectoryGenerator gen;
     GaitConfig config;
-    std::array<Vector3d, MAX_LEGS + 1> feet;
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    std::array<Vector3d, NUM_LEGS> feet;
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         feet[leg] = gen.posedFoot(leg, config.startPosition.at(leg), pose);
     }
     return feet;
@@ -32,7 +32,7 @@ static std::array<Vector3d, MAX_LEGS + 1> feetFor(const BodyPose& pose) {
 TEST(BodyPose, NeutralPoseLeavesTheFeetWhereTheyAre) {
     GaitConfig config;
     auto feet = feetFor(BodyPose{});
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         EXPECT_NEAR((feet[leg] - config.startPosition.at(leg)).norm(), 0.0, tol(1e-12)) << "leg " << leg;
     }
 }
@@ -42,7 +42,7 @@ TEST(BodyPose, RaisingTheBodyLowersEveryFoot) {
     BodyPose pose;
     pose.translation = Vector3d(0.0, 0.0, 0.02);
     auto feet = feetFor(pose);
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         EXPECT_NEAR(feet[leg].z(), config.startPosition.at(leg).z() - 0.02, tol(1e-12)) << "leg " << leg;
     }
 }
@@ -53,7 +53,7 @@ TEST(BodyPose, ShiftingForwardMovesTheFeetBackInTheBodyFrame) {
     BodyPose pose;
     pose.translation = Vector3d(0.03, 0.0, 0.0);
     auto feet = feetFor(pose);
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d moved = gen.legToBody(leg, feet[leg]) - gen.legToBody(leg, config.startPosition.at(leg));
         EXPECT_NEAR((moved - Vector3d(-0.03, 0.0, 0.0)).norm(), 0.0, tol(1e-12)) << "leg " << leg;
     }
@@ -65,10 +65,10 @@ TEST(BodyPose, PositiveRollLowersTheRightSide) {
     pose.roll = 0.1;
     auto feet = feetFor(pose);
     // The right hips drop towards the ground, so the right feet rise relative to them
-    for (int leg = 1; leg <= 3; ++leg) {
+    for (int leg : {gait_core::LEG_FRONT_RIGHT, gait_core::LEG_MIDDLE_RIGHT, gait_core::LEG_REAR_RIGHT}) {
         EXPECT_GT(feet[leg].z(), config.startPosition.at(leg).z() + 0.01) << "leg " << leg;
     }
-    for (int leg = 4; leg <= 6; ++leg) {
+    for (int leg : {gait_core::LEG_REAR_LEFT, gait_core::LEG_MIDDLE_LEFT, gait_core::LEG_FRONT_LEFT}) {
         EXPECT_LT(feet[leg].z(), config.startPosition.at(leg).z() - 0.01) << "leg " << leg;
     }
 }
@@ -78,10 +78,10 @@ TEST(BodyPose, PositivePitchLowersTheNose) {
     BodyPose pose;
     pose.pitch = 0.1;
     auto feet = feetFor(pose);
-    for (int leg : {1, 6}) {
+    for (int leg : {gait_core::LEG_FRONT_RIGHT, gait_core::LEG_FRONT_LEFT}) {
         EXPECT_GT(feet[leg].z(), config.startPosition.at(leg).z() + 0.01) << "leg " << leg;
     }
-    for (int leg : {3, 4}) {
+    for (int leg : {gait_core::LEG_REAR_RIGHT, gait_core::LEG_REAR_LEFT}) {
         EXPECT_LT(feet[leg].z(), config.startPosition.at(leg).z() - 0.01) << "leg " << leg;
     }
 }
@@ -92,7 +92,7 @@ TEST(BodyPose, PositiveYawSweepsTheFeetClockwiseAroundTheBody) {
     BodyPose pose;
     pose.yaw = 0.1;
     auto feet = feetFor(pose);
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d before = gen.legToBody(leg, config.startPosition.at(leg));
         Vector3d after = gen.legToBody(leg, feet[leg]);
         double turned = std::atan2(after.y(), after.x()) - std::atan2(before.y(), before.x());
@@ -113,7 +113,7 @@ TEST(BodyPose, UnposingUndoesPosing) {
     GaitConfig config;
     BodyPose pose = TrajectoryGenerator::rotationAbout(0.12, 0.07, Vector3d(0.0, 0.0, -0.12));
     pose.yaw = 0.05;
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         const Vector3d foot = config.startPosition.at(leg);
         const Vector3d posed = gen.legToBody(leg, gen.posedFoot(leg, foot, pose));
         EXPECT_NEAR((gen.unposedBodyPoint(posed, pose) - gen.legToBody(leg, foot)).norm(), 0.0, tol(1e-12)) << "leg " << leg;
@@ -126,7 +126,7 @@ TEST(BodyPose, LevelingAboutTheGroundBarelyMovesTheFeetSideways) {
     TrajectoryGenerator gen;
     GaitConfig config;
     const BodyPose pose = TrajectoryGenerator::rotationAbout(0.15, 0.15, Vector3d(0.0, 0.0, config.currentHeight));
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         const Vector3d offset = gen.posedFoot(leg, config.startPosition.at(leg), pose) - config.startPosition.at(leg);
         EXPECT_LT(offset.head<2>().norm(), 0.009) << "leg " << leg;
     }

@@ -17,9 +17,11 @@ set(GAIT_CORE_TESTS
   test_foot_directions
   test_foot_force
   test_gait_engine
+  test_gait_schedule
   test_kinematics
   test_leg_clearance
   test_leg_odometry
+  test_no_heap
 )
 
 foreach(name ${GAIT_CORE_TESTS})

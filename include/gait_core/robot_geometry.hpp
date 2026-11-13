@@ -2,10 +2,25 @@
 #define GAIT_CORE__ROBOT_GEOMETRY_HPP
 
 #include <array>
+#include <cstdint>
 
 #include "gait_core/types.hpp"
 
 namespace gait_core {
+
+/**
+ * @brief The legs, clockwise from the front right seen from above, used to index every per-leg array
+ * @note Hardware and URDF names count from 1 (leg1 is the front right), so leg i here is leg{i + 1} there.
+*/
+enum Leg : uint8_t {
+    LEG_FRONT_RIGHT,
+    LEG_MIDDLE_RIGHT,
+    LEG_REAR_RIGHT,
+    LEG_REAR_LEFT,
+    LEG_MIDDLE_LEFT,
+    LEG_FRONT_LEFT,
+    NUM_LEGS
+};
 
 /**
  * @brief Where a leg's coxa joint sits on the body
@@ -28,9 +43,9 @@ struct JointLimits {
 
 /**
  * @brief Everything about the robot's shape that the gait maths needs
- * @note SI units, REP 103 body frame (+x forward, +y left, +z up). Legs are numbered 1-6:
- *       1-3 down the right side front to back, 4-6 up the left side back to front.
- *       legs[0] is unused so the arrays can be indexed by leg number.
+ * @note SI units, REP 103 body frame (+x forward, +y left, +z up). legs is indexed by Leg,
+ *       clockwise from the front right: down the right side front to back, then up the left side
+ *       back to front.
 */
 struct RobotGeometry {
     // Link lengths (m). The tibia length is the straight line from the knee axis to the foot.
@@ -38,7 +53,7 @@ struct RobotGeometry {
     Scalar femurLength;
     Scalar tibiaLength;
 
-    std::array<LegConfig, MAX_LEGS + 1> legs;
+    std::array<LegConfig, NUM_LEGS> legs;
 
     // Neutral stance, in each leg's frame (m)
     Scalar standReach;    // how far out from the coxa joint the foot stands

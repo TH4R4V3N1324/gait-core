@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
-#include <vector>
 
 // Moved from hexapod-ros2's gait_controller.cpp. The logic is unchanged, so the node's golden trace
 // test still matches; only the ROS calls were swapped for the engine's inputs, outputs and hooks.
@@ -17,13 +16,14 @@ constexpr Scalar S(double value) {
     return static_cast<Scalar>(value);
 }
 
-std::string format(const char* fmt, ...) {
-    char buffer[256];
+/**
+ * @brief printf into a command result's message
+*/
+void setMessage(CommandResult& result, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    std::vsnprintf(buffer, sizeof(buffer), fmt, args);
+    std::vsnprintf(result.message, sizeof(result.message), fmt, args);
     va_end(args);
-    return buffer;
 }
 
 // Keys for emitThrottled
@@ -61,19 +61,40 @@ GaitEngine::GaitEngine(const GaitParams& params, const RobotGeometry& geometry)
 // Logging
 // ---------------------------------------------------------------------------------------------
 
-void GaitEngine::emit(LogLevel level, const std::string& message) {
-    if (log) {
-        log(level, message);
+void GaitEngine::emit(LogLevel level, const char* format, ...) {
+    if (!log) {
+        return;
     }
+    char message[160];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    log(level, message);
 }
 
-void GaitEngine::emitThrottled(int key, Scalar period, LogLevel level, const std::string& message) {
+/**
+ * @brief Whether a throttled message is due, marking it sent if so
+*/
+bool GaitEngine::throttleDue(int key, Scalar period) {
     if (throttled_log_sent[key] && toSeconds(now_ - last_throttled_log[key]) < static_cast<double>(period)) {
-        return;
+        return false;
     }
     throttled_log_sent[key] = true;
     last_throttled_log[key] = now_;
-    emit(level, message);
+    return true;
+}
+
+void GaitEngine::emitThrottled(int key, Scalar period, LogLevel level, const char* format, ...) {
+    if (!log || !throttleDue(key, period)) {
+        return;
+    }
+    char message[160];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+    log(level, message);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -105,7 +126,7 @@ bool GaitEngine::imuFresh() const {
 */
 bool GaitEngine::onJointStates(const JointFeedback& feedback) {
     bool all_found = true;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         if (!feedback.present[legNum]) {
             all_found = false;
             continue;
@@ -137,7 +158,7 @@ void GaitEngine::updateFootForces(const JointFeedback& feedback) {
     }
     last_foot_force_stamp = feedback.stamp;
 
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         foot_force_updated[legNum] = false;
         Vec3 legForce;
         if (!ikSolver.groundForce(feedback.angles[legNum], feedback.effort[legNum], legForce)) {
@@ -166,7 +187,7 @@ void GaitEngine::updateFootForces(const JointFeedback& feedback) {
     // Filtered over ~0.3 s, with hysteresis.
     Vec2 horizontal = Vec2::Zero();
     Scalar vertical = 0;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         if (foot_contact[legNum]) {
             horizontal += foot_forces[legNum].head<2>();
             vertical += foot_forces[legNum].z();
@@ -200,11 +221,11 @@ bool GaitEngine::updateLegOdometry(Timestamp stamp) {
     if (has_previous_feet && stamp <= previous_feet_stamp) {
         return false;
     }
-    std::array<Vec2, MAX_LEGS + 1> feet;
+    std::array<Vec2, NUM_LEGS> feet;
     feet.fill(Vec2::Zero());
-    std::array<Scalar, MAX_LEGS + 1> feetZ{};
+    std::array<Scalar, NUM_LEGS> feetZ{};
     const Eigen::Quaternion<Scalar> tiltNow = imuTilt();
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         const Vec3 bodyFoot = trajectoryGen.legToBody(legNum, measured_leg_positions[legNum]);
         // In the level frame, so tilting the body to level it doesn't count as movement
         feet[legNum] = trajectoryGen.unposedBodyPoint(bodyFoot, walk_level).head<2>();
@@ -217,18 +238,20 @@ bool GaitEngine::updateLegOdometry(Timestamp stamp) {
         // Only feet bearing weight, when the joint efforts say so, since a foot only stays put once
         // it's loaded. Without effort data (mock hardware) every non-swinging foot counts.
         Scalar totalLoad = 0;
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             totalLoad += std::max(S(0.0), foot_forces[legNum].z());
         }
         const bool useContact = has_foot_forces && totalLoad > 3 * p.contact_force_on;
         const Scalar dt = static_cast<Scalar>(toSeconds(stamp - previous_feet_stamp));
-        std::vector<Vec2> before, after;
-        std::vector<Scalar> beforeZ, afterZ;
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        std::array<Vec2, NUM_LEGS> before, after;
+        std::array<Scalar, NUM_LEGS> beforeZ, afterZ;
+        size_t plantedCount = 0, settledCount = 0;
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             const bool planted = !isSwinging(legNum) && (!useContact || (foot_contact[legNum] && previous_contact[legNum]));
             if (planted) {
-                before.push_back(previous_feet[legNum]);
-                after.push_back(feet[legNum]);
+                before[plantedCount] = previous_feet[legNum];
+                after[plantedCount] = feet[legNum];
+                ++plantedCount;
             }
             // The servos lag at touchdown, so a foot the gait calls planted is still settling onto
             // the ground for a moment, and counting that drop as the body rising made the height
@@ -236,19 +259,20 @@ bool GaitEngine::updateLegOdometry(Timestamp stamp) {
             // without them took the spawn drop's bounce in simulation as the body sinking 4-5 cm.
             planted_time[legNum] = planted && useContact ? planted_time[legNum] + dt : S(0.0);
             if (planted_time[legNum] > CLIMB_SETTLE_TIME) {
-                beforeZ.push_back(previous_feet_z[legNum]);
-                afterZ.push_back(feetZ[legNum]);
+                beforeZ[settledCount] = previous_feet_z[legNum];
+                afterZ[settledCount] = feetZ[legNum];
+                ++settledCount;
             }
         }
         BodyMotion motion;
-        if (LegOdometry::estimateMotion(before, after, motion)) {
+        if (LegOdometry::estimateMotion(before.data(), after.data(), plantedCount, motion)) {
             // Pushing against something, the feet scrub along the ground, so they say the body is
             // moving when it isn't: keep only the turn
             legOdometry.integrate(is_blocked ? BodyMotion{0, 0, motion.dyaw} : motion);
         }
         if (climb_anchored) {
             Scalar climb;
-            if (LegOdometry::estimateClimb(beforeZ, afterZ, climb)) {
+            if (LegOdometry::estimateClimb(beforeZ.data(), afterZ.data(), settledCount, climb)) {
                 legOdometry.integrateClimb(climb);
             }
         } else {
@@ -256,7 +280,7 @@ bool GaitEngine::updateLegOdometry(Timestamp stamp) {
             // the feet that have been carrying weight for a while (at least a tripod)
             Scalar sum = 0;
             int settled = 0;
-            for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
                 if (planted_time[legNum] > CLIMB_ANCHOR_TIME) {
                     sum += feetZ[legNum];
                     ++settled;
@@ -265,8 +289,8 @@ bool GaitEngine::updateLegOdometry(Timestamp stamp) {
             if (settled >= 3) {
                 odom_start_height = -sum / settled - legOdometry.z();
                 climb_anchored = true;
-                emit(LogLevel::Info, format("Leg odometry height started: body %.1f mm above the floor, from %d feet",
-                    static_cast<double>(-sum / settled * 1000), settled));
+                emit(LogLevel::Info, "Leg odometry height started: body %.1f mm above the floor, from %d feet",
+                    static_cast<double>(-sum / settled * 1000), settled);
             }
         }
     }
@@ -312,26 +336,29 @@ Scalar GaitEngine::floorRise() const {
 
 CommandResult GaitEngine::setGait(uint8_t gait) {
     config.setGait(static_cast<Gait>(gait));
-    emit(LogLevel::Info, format("Gait %d requested", gait));
-    return {true, "Gait " + std::to_string(gait) + " requested, applies at the next step"};
+    emit(LogLevel::Info, "Gait %d requested", gait);
+    CommandResult result;
+    result.success = true;
+    setMessage(result, "Gait %d requested, applies at the next step", gait);
+    return result;
 }
 
 CommandResult GaitEngine::setMode(uint8_t mode) {
     CommandResult result;
     if (mode >= NUM_MODES) {
-        result.message = "Mode " + std::to_string(mode) + " is not a valid mode";
-        emit(LogLevel::Warn, result.message);
+        setMessage(result, "Mode %d is not a valid mode", mode);
+        emit(LogLevel::Warn, "%s", result.message);
         return result;
     }
     if (mode == MODE_TILT && sit_state != SitState::STANDING) {
-        result.message = "Can't enter tilt mode while sitting";
-        emit(LogLevel::Warn, result.message);
+        setMessage(result, "Can't enter tilt mode while sitting");
+        emit(LogLevel::Warn, "%s", result.message);
         return result;
     }
     config.setMode(static_cast<Mode>(mode));
     result.success = true;
-    result.message = "Mode changed to " + std::to_string(mode);
-    emit(LogLevel::Info, format("Mode changed to %d", mode));
+    setMessage(result, "Mode changed to %d", mode);
+    emit(LogLevel::Info, "%s", result.message);
     return result;
 }
 
@@ -343,20 +370,20 @@ CommandResult GaitEngine::setHeight(Scalar height) {
     CommandResult result;
     const double h = static_cast<double>(height);
     if (sit_state != SitState::STANDING) {
-        result.message = "can't change height while sitting";
-        emit(LogLevel::Warn, format("Refused height %.3f: %s", h, result.message.c_str()));
+        setMessage(result, "can't change height while sitting");
+        emit(LogLevel::Warn, "Refused height %.3f: %s", h, result.message);
         return result;
     }
     if (-height < p.min_height || -height > p.max_height) {
-        result.message = "height must be between " + std::to_string(p.min_height) + " and " +
-            std::to_string(p.max_height) + " m (sent as negative z)";
-        emit(LogLevel::Warn, format("Refused height %.3f: %s", h, result.message.c_str()));
+        setMessage(result, "height must be between %f and %f m (sent as negative z)",
+            static_cast<double>(p.min_height), static_cast<double>(p.max_height));
+        emit(LogLevel::Warn, "Refused height %.3f: %s", h, result.message);
         return result;
     }
     target_height = height;
     result.success = true;
-    result.message = "moving to " + std::to_string(-height) + " m";
-    emit(LogLevel::Info, format("Height target %.3f m", -h));
+    setMessage(result, "moving to %f m", -h);
+    emit(LogLevel::Info, "Height target %.3f m", -h);
     return result;
 }
 
@@ -374,8 +401,8 @@ CommandResult GaitEngine::sit(bool down) {
                 if (!reachable(Vec3(p.sit_reach, 0, -p.sit_height)) ||
                     !reachable(Vec3(p.sit_reach, 0, stand_height))) {
                     result.success = false;
-                    result.message = "sit_reach and sit_height put a foot out of reach";
-                    emit(LogLevel::Warn, "Refused to sit: " + result.message);
+                    setMessage(result, "sit_reach and sit_height put a foot out of reach");
+                    emit(LogLevel::Warn, "Refused to sit: %s", result.message);
                     return result;
                 }
                 stand_height = target_height;
@@ -395,10 +422,10 @@ CommandResult GaitEngine::sit(bool down) {
             case SitState::SPREADING:
             case SitState::LOWERING:
             case SitState::SEATED:
-                result.message = "already sitting";
+                setMessage(result, "already sitting");
                 return result;
         }
-        result.message = "sitting down";
+        setMessage(result, "sitting down");
     } else {
         switch (sit_state) {
             case SitState::SEATED:
@@ -413,15 +440,15 @@ CommandResult GaitEngine::sit(bool down) {
             case SitState::STANDING:
             case SitState::RAISING:
             case SitState::GATHERING:
-                result.message = "already standing";
+                setMessage(result, "already standing");
                 return result;
         }
-        result.message = "standing up";
+        setMessage(result, "standing up");
     }
     if (seatedChanged) {
         seatedChanged(seated());
     }
-    emit(LogLevel::Info, result.message);
+    emit(LogLevel::Info, "%s", result.message);
     return result;
 }
 
@@ -472,7 +499,7 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
         const Scalar step = p.height_rate * dt;
         const Scalar delta = std::clamp(target_height - config.currentHeight, -step, step);
         config.setHeight(config.currentHeight + delta);
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             current_leg_positions[legNum].z() += delta;
             swing_start[legNum].z() += delta;
             swing_target[legNum].z() += delta;
@@ -518,7 +545,7 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
 /**
  * @brief Solve IK for a leg target and record it as that leg's joint command
  * @param[in] target The foot target position (leg frame)
- * @param[in] legNum The leg number (1-6)
+ * @param[in] legNum The leg
  * @note The body is leveled while walking and each foot raised or lowered by load balancing.
  *       Also records target as the leg's current position.
 */
@@ -533,9 +560,9 @@ void GaitEngine::commandFoot(const Vec3& target, int legNum) {
  * @param[in] targets The foot target of each leg (leg frame)
  * @param[in] dt The time since the last tick (s)
 */
-void GaitEngine::sendFootTargets(const std::array<Vec3, MAX_LEGS + 1>& targets, Scalar dt) {
+void GaitEngine::sendFootTargets(const std::array<Vec3, NUM_LEGS>& targets, Scalar dt) {
     const Scalar maxStep = p.max_foot_speed * dt;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         Vec3 targetPos = targets[legNum];
         const Vec3 delta = targetPos - current_leg_positions[legNum];
         if (delta.norm() > maxStep) {
@@ -584,9 +611,8 @@ bool GaitEngine::startup(Scalar dt) {
 
     // Straight line from the measured position to the start position
     auto targetsAt = [this](Scalar progress) {
-        std::array<Vec3, MAX_LEGS + 1> targets;
-        targets[0] = Vec3::Zero();
-        for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+        std::array<Vec3, NUM_LEGS> targets;
+        for (int leg = 0; leg < NUM_LEGS; ++leg) {
             const Vec3& start = startup_start_positions[leg];
             targets[leg] = start + (config.startPosition.at(leg) - start) * progress;
         }
@@ -598,7 +624,7 @@ bool GaitEngine::startup(Scalar dt) {
     startup_progress = std::min(S(1.0), startup_progress + ds * scale);
 
     const auto targets = targetsAt(startup_progress);
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         commandFoot(targets[leg], leg);
     }
     output.commanded = true;
@@ -629,10 +655,9 @@ bool GaitEngine::startup(Scalar dt) {
  * @return The target foot position of each leg (leg frame)
  * @note Legs with no active swing or stance spline hold their commanded position
 */
-std::array<Vec3, MAX_LEGS + 1> GaitEngine::legTargets(Scalar ds) {
-    std::array<Vec3, MAX_LEGS + 1> targets;
-    targets[0] = Vec3::Zero();
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+std::array<Vec3, NUM_LEGS> GaitEngine::legTargets(Scalar ds) {
+    std::array<Vec3, NUM_LEGS> targets;
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         const SwingSpline& spline = trajectoryGen.gaitState.swingSplines[legNum];
         const LineSpline& stanceSpline = trajectoryGen.gaitState.stanceSplines[legNum];
 
@@ -657,9 +682,9 @@ std::array<Vec3, MAX_LEGS + 1> GaitEngine::legTargets(Scalar ds) {
  * @param[in] dt The time since the last tick (s)
  * @return A factor from 0 to 1 to scale this tick's progress by (1 = full speed)
 */
-Scalar GaitEngine::jointSpeedScale(const std::array<Vec3, MAX_LEGS + 1>& targets, Scalar dt) {
+Scalar GaitEngine::jointSpeedScale(const std::array<Vec3, NUM_LEGS>& targets, Scalar dt) {
     Scalar max_delta = 0;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         const JointAngles from = ikSolver.solveIK(current_leg_positions[legNum]);
         const JointAngles to = ikSolver.solveIK(targets[legNum]);
         max_delta = std::max({max_delta,
@@ -679,7 +704,7 @@ Scalar GaitEngine::jointSpeedScale(const std::array<Vec3, MAX_LEGS + 1>& targets
 */
 void GaitEngine::performLegStep(Scalar dt, bool idle, bool handlePhaseTransition) {
     Scalar ds = idle ? S(0.0) : dt / current_phase_duration;
-    std::array<Vec3, MAX_LEGS + 1> targets = legTargets(ds);
+    std::array<Vec3, NUM_LEGS> targets = legTargets(ds);
     const Scalar scale = jointSpeedScale(targets, dt);
     if (scale < 1) {
         ds *= scale;
@@ -687,7 +712,7 @@ void GaitEngine::performLegStep(Scalar dt, bool idle, bool handlePhaseTransition
     }
 
     // Advance the splines and deactivate any that have reached their end
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         SwingSpline& spline = trajectoryGen.gaitState.swingSplines[legNum];
         LineSpline& stanceSpline = trajectoryGen.gaitState.stanceSplines[legNum];
         if (spline.active) {
@@ -729,7 +754,7 @@ void GaitEngine::applyPendingGait() {
     leg_swinging.fill(false);
     for (const auto& option : config.getGaits()) {
         if (option.id == config.currentGait) {
-            emit(LogLevel::Info, "Gait changed to " + option.name);
+            emit(LogLevel::Info, "Gait changed to %s", option.name);
         }
     }
 }
@@ -749,7 +774,7 @@ Vec3 GaitEngine::plantedStart(int legNum) {
 */
 bool GaitEngine::forcesValid() {
     Scalar total = 0;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         total += std::max(S(0.0), foot_forces[legNum].z());
     }
     return has_foot_forces && total > 3 * p.contact_force_on;
@@ -765,12 +790,12 @@ bool GaitEngine::forcesValid() {
  *       force data, the offsets ease back to zero.
 */
 void GaitEngine::adaptToTerrain(Scalar dt) {
-    const Vec3 nominal = config.startPosition.at(1);  // all legs share the start height
+    const Vec3 nominal = config.startPosition.at(LEG_FRONT_RIGHT);  // all legs share the start height
     if (!p.terrain_adaptation || !forcesValid()) {
         seeking.fill(false);
         landing_check.fill(false);
     } else {
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             const Vec3& force = foot_forces[legNum];
             const Scalar sideways = force.head<2>().norm();
             const bool loaded = force.z() > p.touchdown_force;
@@ -782,9 +807,9 @@ void GaitEngine::adaptToTerrain(Scalar dt) {
             stumble_ticks[legNum] = blockedFoot ? stumble_ticks[legNum] + 1 : 0;
             if (stumble_ticks[legNum] >= 3 && stumble_target[legNum] == 0) {
                 stumble_target[legNum] = p.stumble_lift;
-                emit(LogLevel::Debug, format("Leg %d stumbled at s=%.2f (%.1f N sideways, %.1f N up)",
-                    legNum, static_cast<double>(phase_progress), static_cast<double>(sideways),
-                    static_cast<double>(force.z())));
+                emit(LogLevel::Debug, "Leg %d stumbled at s=%.2f (%.1f N sideways, %.1f N up)",
+                    legNum + 1, static_cast<double>(phase_progress), static_cast<double>(sideways),
+                    static_cast<double>(force.z()));
             }
             // Only well above where it was aiming: touching a little early is just a normal landing
             const bool aboveTarget = current_leg_positions[legNum].z() - swing_target[legNum].z() > S(0.01);
@@ -797,8 +822,8 @@ void GaitEngine::adaptToTerrain(Scalar dt) {
                 leg_swinging[legNum] = false;
                 terrain_offset[legNum] = std::clamp(current_leg_positions[legNum].z() - nominal.z(),
                     -p.max_step_height, p.max_step_height);
-                emit(LogLevel::Debug, format("Leg %d touched down %.1f mm high", legNum,
-                    static_cast<double>(terrain_offset[legNum] * 1000)));
+                emit(LogLevel::Debug, "Leg %d touched down %.1f mm high", legNum + 1,
+                    static_cast<double>(terrain_offset[legNum] * 1000));
             } else if (landing_check[legNum] && !leg_swinging[legNum]) {
                 // Its swing ended unloaded: if it is still unloaded once the weight has had time to
                 // come onto it, the ground is lower than expected
@@ -811,8 +836,8 @@ void GaitEngine::adaptToTerrain(Scalar dt) {
             } else if (seeking[legNum] && !leg_swinging[legNum]) {
                 if (force.z() > p.contact_force_on || terrain_offset[legNum] <= -p.max_step_height) {
                     seeking[legNum] = false;
-                    emit(LogLevel::Debug, format("Leg %d found ground %.1f mm low", legNum,
-                        static_cast<double>(-terrain_offset[legNum] * 1000)));
+                    emit(LogLevel::Debug, "Leg %d found ground %.1f mm low", legNum + 1,
+                        static_cast<double>(-terrain_offset[legNum] * 1000));
                 } else {
                     terrain_offset[legNum] = std::max(-p.max_step_height, terrain_offset[legNum] - p.seek_speed * dt);
                 }
@@ -822,12 +847,12 @@ void GaitEngine::adaptToTerrain(Scalar dt) {
 
     // Body height follows the average ground (or the offsets unwind when adaptation is off)
     Scalar mean = 0;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        mean += terrain_offset[legNum] / MAX_LEGS;
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+        mean += terrain_offset[legNum] / NUM_LEGS;
     }
     const Scalar shift = std::clamp(mean, -p.body_height_rate * dt, p.body_height_rate * dt);
     ground_level += shift;  // the body rises by shift
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         terrain_offset[legNum] -= shift;
         if (!p.terrain_adaptation || !forcesValid()) {
             terrain_offset[legNum] -= std::clamp(terrain_offset[legNum], -p.body_height_rate * dt, p.body_height_rate * dt);
@@ -840,7 +865,7 @@ void GaitEngine::adaptToTerrain(Scalar dt) {
 */
 bool GaitEngine::feetAtStart() {
     constexpr Scalar POSITION_TOLERANCE = S(0.001);  // m
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         if ((current_leg_positions[legNum] - plantedStart(legNum)).norm() > POSITION_TOLERANCE) {
             return false;
         }
@@ -874,18 +899,12 @@ void GaitEngine::returnToStart(Scalar dt) {
 
     if (phase_progress == 0) {
         current_phase_duration = p.phase_duration;
-        trajectoryGen.GenerateTrajectories(
-            // Swing: move to start position
-            [this](int legNum, const Vec3&) {
-                return plantedStart(legNum);
-            },
-            // Stance: hold current position
-            [](int, const Vec3& currentPos) {
-                return currentPos;
-            },
-            current_leg_positions,
-            phase
-        );
+        // Swinging legs move to their start position, standing legs hold where they are
+        std::array<Vec3, NUM_LEGS> startPositions;
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+            startPositions[legNum] = plantedStart(legNum);
+        }
+        trajectoryGen.GenerateTrajectories(startPositions, current_leg_positions, current_leg_positions, phase);
     }
 
     performLegStep(dt, false, false);
@@ -954,11 +973,10 @@ bool GaitEngine::handleIdleReturn(Scalar dt) {
  * @param[in] moveDt How much body motion to apply to the stance feet this tick (s)
  * @return The target foot position of each leg (leg frame)
 */
-std::array<Vec3, MAX_LEGS + 1> GaitEngine::walkTargets(Scalar forward, Scalar left, Scalar yaw, Scalar ds, Scalar moveDt) {
-    std::array<Vec3, MAX_LEGS + 1> targets;
-    targets[0] = Vec3::Zero();
+std::array<Vec3, NUM_LEGS> GaitEngine::walkTargets(Scalar forward, Scalar left, Scalar yaw, Scalar ds, Scalar moveDt) {
+    std::array<Vec3, NUM_LEGS> targets;
     const Scalar s = std::min(S(1.0), phase_progress + ds);
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         if (leg_swinging[legNum]) {
             if (s >= 1) {
                 targets[legNum] = swing_target[legNum];
@@ -1026,12 +1044,11 @@ void GaitEngine::walk(Scalar dt) {
 
     // Start of a phase: the next group lifts off from where it stands
     if (phase_progress == 0) {
-        const auto& swingGroup = trajectoryGen.gaitState.config[phase];
         stumble_target.fill(0);
         stumble_boost.fill(0);
         swing_lift.fill(0);
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-            leg_swinging[legNum] = std::find(swingGroup.begin(), swingGroup.end(), legNum) != swingGroup.end();
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+            leg_swinging[legNum] = trajectoryGen.gaitState.config.swingsIn(legNum, phase);
             swing_start[legNum] = current_leg_positions[legNum];
             swing_target[legNum] = current_leg_positions[legNum];
             trajectoryGen.gaitState.swingSplines[legNum].active = false;
@@ -1040,7 +1057,7 @@ void GaitEngine::walk(Scalar dt) {
     }
 
     // Stumble lift ramps in at 0.5 m/s rather than jerking the foot up
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         stumble_boost[legNum] += std::clamp(stumble_target[legNum] - stumble_boost[legNum], -S(0.5) * dt, S(0.5) * dt);
     }
 
@@ -1049,7 +1066,7 @@ void GaitEngine::walk(Scalar dt) {
     const Scalar maxTargetStep = p.max_target_speed * dt;
     const bool useMap = p.terrain_map && p.terrain_adaptation && forcesValid() &&
         footholdPlanner != nullptr && footholdPlanner->ready();
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         if (!leg_swinging[legNum]) continue;
         Vec3 desired = trajectoryGen.swingTarget(legNum,
             trajectoryGen.footDisplacement(forward, left, yaw, legNum, stanceTime / 2));
@@ -1078,7 +1095,7 @@ void GaitEngine::walk(Scalar dt) {
 
     phase_progress = std::min(S(1.0), phase_progress + ds);
     if (phase_progress >= 1) {
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             // The foot is where its swing aimed: that's its ground now
             if (leg_swinging[legNum] && p.terrain_adaptation) {
                 terrain_offset[legNum] = std::clamp(current_leg_positions[legNum].z() - config.startPosition.at(legNum).z(),
@@ -1104,8 +1121,8 @@ void GaitEngine::walk(Scalar dt) {
  * @param[out] targets The foot position of each leg (leg frame)
  * @return true if every foot stays within maxStride of neutral and every joint is within reach
 */
-bool GaitEngine::tiltFeasible(const BodyPose& pose, std::array<Vec3, MAX_LEGS + 1>& targets) {
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+bool GaitEngine::tiltFeasible(const BodyPose& pose, std::array<Vec3, NUM_LEGS>& targets) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         targets[legNum] = trajectoryGen.posedFoot(legNum, tilt_ground_feet[legNum], pose);
         const Vec3 offset = targets[legNum] - config.startPosition.at(legNum);
         if (std::hypot(offset.x(), offset.y()) > config.maxStride) {
@@ -1134,7 +1151,7 @@ void GaitEngine::updateLoadBalance(Scalar dt) {
         std::abs(current_motion_intent.left) < S(1e-3) &&
         std::abs(current_motion_intent.yaw) < S(1e-3);  // tilt mode counts: its feet stay planted
     if (!standing && p.terrain_adaptation) {
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             terrain_offset[legNum] = std::clamp(terrain_offset[legNum] + foot_height_offset[legNum],
                 -p.max_step_height, p.max_step_height);
             foot_height_offset[legNum] = 0;
@@ -1142,16 +1159,16 @@ void GaitEngine::updateLoadBalance(Scalar dt) {
         return;
     }
 
-    std::array<Scalar, MAX_LEGS + 1> change{};
+    std::array<Scalar, NUM_LEGS> change{};
     if (!p.load_balancing || !standing || sit_state != SitState::STANDING) {
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             change[legNum] = -foot_height_offset[legNum];
         }
     } else {
-        int planted[MAX_LEGS];
+        int planted[NUM_LEGS];
         int count = 0;
         Scalar total = 0;
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             if (!isSwinging(legNum)) {
                 planted[count++] = legNum;
                 total += foot_forces[legNum].z();
@@ -1161,8 +1178,8 @@ void GaitEngine::updateLoadBalance(Scalar dt) {
             return;
         }
         const Scalar share = total / count;
-        Eigen::Matrix<Scalar, Eigen::Dynamic, 1, 0, MAX_LEGS, 1> raise(count);
-        Eigen::Matrix<Scalar, Eigen::Dynamic, 3, 0, MAX_LEGS, 3> plane(count, 3);
+        Eigen::Matrix<Scalar, Eigen::Dynamic, 1, 0, NUM_LEGS, 1> raise(count);
+        Eigen::Matrix<Scalar, Eigen::Dynamic, 3, 0, NUM_LEGS, 3> plane(count, 3);
         for (int i = 0; i < count; ++i) {
             raise(i) = p.load_balance_gain * dt * (foot_forces[planted[i]].z() - share);
             const Vec3 foot = trajectoryGen.neutralFootInBody(planted[i]);
@@ -1174,7 +1191,7 @@ void GaitEngine::updateLoadBalance(Scalar dt) {
             change[planted[i]] = raise(i);
         }
     }
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         foot_height_offset[legNum] = std::clamp(
             foot_height_offset[legNum] + std::clamp(change[legNum], -maxStep, maxStep),
             -p.load_balance_max, p.load_balance_max);
@@ -1197,7 +1214,7 @@ bool GaitEngine::reachable(const Vec3& target) {
 
 /**
  * @brief Lower a swinging foot until every joint of its leg is inside its range
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] target The swing's foot target (leg frame)
  * @param[in] groundZ Height of the swing's ground line (lift-off to landing) under the target
  * @return target, with its height above groundZ cut back as far as needed, but no lower than groundZ
@@ -1216,8 +1233,8 @@ Vec3 GaitEngine::limitSwingLift(int legNum, const Vec3& target, Scalar groundZ) 
         (fits(lowered) ? low : high) = mid;
     }
     lowered.z() = groundZ + lift * low;
-    emitThrottled(LOG_SWING_LOWERED, 1, LogLevel::Debug, format("Leg %d swing lowered by %.0f mm to stay inside its joint limits",
-        legNum, static_cast<double>((1 - low) * lift * 1000)));
+    emitThrottled(LOG_SWING_LOWERED, 1, LogLevel::Debug, "Leg %d swing lowered by %.0f mm to stay inside its joint limits",
+        legNum + 1, static_cast<double>((1 - low) * lift * 1000));
     return lowered;
 }
 
@@ -1250,7 +1267,7 @@ void GaitEngine::updateWalkLeveling(Scalar dt) {
     const Vec3 pivot(0, 0, config.currentHeight);
     auto fits = [&](Scalar scale) {
         const BodyPose pose = TrajectoryGenerator::rotationAbout(roll * scale, pitch * scale, pivot);
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             if (!reachable(trajectoryGen.posedFoot(legNum, current_leg_positions[legNum], pose))) {
                 return false;
             }
@@ -1298,7 +1315,7 @@ void GaitEngine::tilt(Scalar dt, bool exiting) {
         tilt_saved_roll = walk_level_roll;
         tilt_saved_pitch = walk_level_pitch;
         tilt_saved_feet = current_leg_positions;
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
             tilt_ground_feet[legNum] = trajectoryGen.posedFoot(legNum, current_leg_positions[legNum], walk_level);
         }
         current_leg_positions = tilt_ground_feet;
@@ -1309,8 +1326,8 @@ void GaitEngine::tilt(Scalar dt, bool exiting) {
         tilt_applied = BodyPose{};
         tilt_yaw_reference = body_yaw;
         tilt_active = true;
-        emit(LogLevel::Info, std::string("Tilt mode: feet planted, body follows body_pose") +
-            (p.tilt_leveling ? ", held in place by the IMU" : ""));
+        emit(LogLevel::Info, "Tilt mode: feet planted, body follows body_pose%s",
+            p.tilt_leveling ? ", held in place by the IMU" : "");
     }
 
     // Move the command towards the request (or neutral when leaving) at a limited rate
@@ -1366,7 +1383,7 @@ void GaitEngine::tilt(Scalar dt, bool exiting) {
         approach(step.translation[i], desired.translation[i], maxShift);
     }
 
-    std::array<Vec3, MAX_LEGS + 1> targets;
+    std::array<Vec3, NUM_LEGS> targets;
     targets.fill(Vec3::Zero());
     BodyPose pose = step;
     if (!tiltFeasible(pose, targets)) {

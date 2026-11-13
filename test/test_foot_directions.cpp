@@ -5,7 +5,7 @@
 #include "test_common.hpp"
 #include "gait_core/trajectory_generator.hpp"
 
-using gait_core::MAX_LEGS;
+using gait_core::NUM_LEGS;
 using gait_core::TrajectoryGenerator;
 using Vector3d = gait_core::Vec3;
 
@@ -16,7 +16,7 @@ static const Vector3d LEFT(0.0, 1.0, 0.0);
 /**
  * @brief Rotate a leg-frame displacement into the body frame
  * @param[in] gen The trajectory generator that owns the leg frames
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] legVector The displacement in the leg frame
  * @return The displacement in the body frame
 */
@@ -37,15 +37,15 @@ static double angleDiff(double a, double b) {
 TEST(FootDirections, LegFramesMatchUrdf) {
     TrajectoryGenerator gen;
     // Coxa joint yaws from hexapod_primitives.urdf.xacro
-    const double urdf_yaw[MAX_LEGS + 1] = {0.0, -M_PI / 4, -M_PI / 2, -3 * M_PI / 4, 3 * M_PI / 4, M_PI / 2, M_PI / 4};
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    const double urdf_yaw[NUM_LEGS] = {-M_PI / 4, -M_PI / 2, -3 * M_PI / 4, 3 * M_PI / 4, M_PI / 2, M_PI / 4};
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         EXPECT_NEAR(angleDiff(gen.legYaw(leg), urdf_yaw[leg]), 0.0, tol(1e-3)) << "leg " << leg;
     }
 }
 
 TEST(FootDirections, NeutralFeetPointAwayFromBody) {
     TrajectoryGenerator gen;
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d foot = gen.neutralFootInBody(leg);
         EXPECT_GT(foot.norm(), 0.25) << "leg " << leg;
         EXPECT_LT(foot.norm(), 0.35) << "leg " << leg;
@@ -54,7 +54,7 @@ TEST(FootDirections, NeutralFeetPointAwayFromBody) {
 
 TEST(FootDirections, ForwardMovesEveryFootForward) {
     TrajectoryGenerator gen;
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d body = toBody(gen, leg, gen.footDisplacement(0.1, 0.0, 0.0, leg, 1.0));
         EXPECT_NEAR((body - 0.1 * FORWARD).norm(), 0.0, tol(1e-9)) << "leg " << leg;
     }
@@ -62,7 +62,7 @@ TEST(FootDirections, ForwardMovesEveryFootForward) {
 
 TEST(FootDirections, PositiveLeftMovesEveryFootLeft) {
     TrajectoryGenerator gen;
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d body = toBody(gen, leg, gen.footDisplacement(0.0, 0.1, 0.0, leg, 1.0));
         EXPECT_NEAR((body - 0.1 * LEFT).norm(), 0.0, tol(1e-9)) << "leg " << leg;
     }
@@ -70,24 +70,24 @@ TEST(FootDirections, PositiveLeftMovesEveryFootLeft) {
 
 TEST(FootDirections, LegsAreOnTheRightSides) {
     TrajectoryGenerator gen;
-    // Legs 1-3 are on the right (-y), 4-6 on the left (+y); legs 1 and 6 are at the front
-    for (int leg = 1; leg <= 3; ++leg) {
+    // The right legs are at -y, the left at +y
+    for (int leg : {gait_core::LEG_FRONT_RIGHT, gait_core::LEG_MIDDLE_RIGHT, gait_core::LEG_REAR_RIGHT}) {
         EXPECT_LT(gen.neutralFootInBody(leg).y(), 0.0) << "leg " << leg;
     }
-    for (int leg = 4; leg <= 6; ++leg) {
+    for (int leg : {gait_core::LEG_REAR_LEFT, gait_core::LEG_MIDDLE_LEFT, gait_core::LEG_FRONT_LEFT}) {
         EXPECT_GT(gen.neutralFootInBody(leg).y(), 0.0) << "leg " << leg;
     }
-    EXPECT_GT(gen.neutralFootInBody(1).x(), 0.0);
-    EXPECT_GT(gen.neutralFootInBody(6).x(), 0.0);
-    EXPECT_LT(gen.neutralFootInBody(3).x(), 0.0);
-    EXPECT_LT(gen.neutralFootInBody(4).x(), 0.0);
+    EXPECT_GT(gen.neutralFootInBody(gait_core::LEG_FRONT_RIGHT).x(), 0.0);
+    EXPECT_GT(gen.neutralFootInBody(gait_core::LEG_FRONT_LEFT).x(), 0.0);
+    EXPECT_LT(gen.neutralFootInBody(gait_core::LEG_REAR_RIGHT).x(), 0.0);
+    EXPECT_LT(gen.neutralFootInBody(gait_core::LEG_REAR_LEFT).x(), 0.0);
 }
 
 TEST(FootDirections, PositiveYawIsAnticlockwiseAboutBodyCentre) {
     TrajectoryGenerator gen;
     const double yaw = 0.5;       // rad/s
     const double duration = 0.01; // s, short so the arc is close to a straight line
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d foot = gen.neutralFootInBody(leg);
         Vector3d body = toBody(gen, leg, gen.footDisplacement(0.0, 0.0, yaw, leg, duration));
         // Tangent to the circle about the body centre, anticlockwise, with arc length r * yaw * t

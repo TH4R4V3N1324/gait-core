@@ -9,7 +9,7 @@ using gait_core::CommandResult;
 using gait_core::GaitEngine;
 using gait_core::GaitOutput;
 using gait_core::JointFeedback;
-using gait_core::MAX_LEGS;
+using gait_core::NUM_LEGS;
 using gait_core::Scalar;
 using gait_core::SitState;
 using gait_core::Timestamp;
@@ -31,7 +31,7 @@ public:
 
     Robot() {
         // Legs laid out flat at their zeros
-        for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+        for (int leg = 0; leg < NUM_LEGS; ++leg) {
             feedback.present[leg] = true;
             feedback.angles[leg] = {0, 0, 0};
         }
@@ -46,7 +46,7 @@ public:
             const GaitOutput out = engine.update(DT, now);
             if (out.commanded) {
                 ++commandedTicks;
-                for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+                for (int leg = 0; leg < NUM_LEGS; ++leg) {
                     feedback.angles[leg] = out.joints[leg];
                 }
             }
@@ -59,7 +59,7 @@ public:
 TEST(GaitEngine, WaitsForEveryJointBeforeMoving) {
     GaitEngine engine;
     JointFeedback partial;
-    for (int leg = 1; leg < MAX_LEGS; ++leg) {  // leg 6 missing
+    for (int leg = 0; leg < gait_core::LEG_FRONT_LEFT; ++leg) {  // the front left leg missing
         partial.present[leg] = true;
     }
     engine.onJointStates(partial);
@@ -122,7 +122,7 @@ TEST(GaitEngine, EveryCommandIsReachable) {
     robot.engine.setVelocity({static_cast<Scalar>(0.08), static_cast<Scalar>(0.06), static_cast<Scalar>(0.3)});
     for (int i = 0; i < 400; ++i) {
         robot.run(0.01);
-        for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+        for (int leg = 0; leg < NUM_LEGS; ++leg) {
             const auto& q = robot.feedback.angles[leg];
             ASSERT_TRUE(std::isfinite(q.coxa) && std::isfinite(q.femur) && std::isfinite(q.tibia)) << "leg " << leg;
             EXPECT_LE(std::abs(q.coxa), 1.4 + 1e-6) << "leg " << leg;

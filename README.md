@@ -24,8 +24,10 @@ How this fits with the robots and the other repositories is documented in
 - SI units: metres, radians, seconds.
 - Body frame as in [Coordinate frames](https://github.com/TH4R4V3N1324/hexapod-docs/blob/main/docs/concepts/frames.md).
   Each leg frame has +X pointing out along the leg from its coxa joint.
-- Legs are numbered 1–6 (see [Legs](https://github.com/TH4R4V3N1324/hexapod-docs/blob/main/docs/concepts/legs.md)).
-  Per-leg arrays have `MAX_LEGS + 1` entries and are indexed by leg number; entry 0 is unused.
+- Per-leg arrays have `NUM_LEGS` entries indexed by the `Leg` enum, which runs clockwise from
+  `LEG_FRONT_RIGHT` (0) to `LEG_FRONT_LEFT` (5). The hardware and URDF names count from 1
+  (see [Legs](https://github.com/TH4R4V3N1324/hexapod-docs/blob/main/docs/concepts/legs.md)),
+  so `Leg` 0 is `leg1`.
 - Callers convert to and from other units or frames at their own edges, never inside the core.
 
 ## Building and testing

@@ -25,8 +25,6 @@ using Rotation2D = Eigen::Rotation2D<Scalar>;
 // M_PI is not standard C++ (MSVC and some embedded toolchains hide it)
 inline constexpr Scalar kPi = static_cast<Scalar>(3.14159265358979323846);
 
-static constexpr int MAX_LEGS = 6;
-
 /**
  * @brief Commanded body velocity, in the body frame
  * @note SI units, REP 103 body frame: +x forward, +y left, +z up, yaw positive anticlockwise.

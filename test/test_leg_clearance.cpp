@@ -103,7 +103,9 @@ TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
     };
 
     double worst = 1e9;
-    for (auto [a, b] : std::vector<std::pair<int, int>>{{1, 2}, {2, 3}, {4, 5}, {5, 6}}) {
+    for (auto [a, b] : std::vector<std::pair<int, int>>{
+            {gait_core::LEG_FRONT_RIGHT, gait_core::LEG_MIDDLE_RIGHT}, {gait_core::LEG_MIDDLE_RIGHT, gait_core::LEG_REAR_RIGHT},
+            {gait_core::LEG_REAR_LEFT, gait_core::LEG_MIDDLE_LEFT}, {gait_core::LEG_MIDDLE_LEFT, gait_core::LEG_FRONT_LEFT}}) {
         for (const auto& offsetA : offsets) {
             for (double liftA : heights) {
                 auto legA = segmentsFor(a, offsetA, liftA);

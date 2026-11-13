@@ -1,6 +1,7 @@
 #ifndef GAIT_CORE__LEG_ODOMETRY_HPP
 #define GAIT_CORE__LEG_ODOMETRY_HPP
 
+#include <cstddef>
 #include <vector>
 
 #include "gait_core/types.hpp"
@@ -23,16 +24,16 @@ struct BodyMotion {
 */
 class LegOdometry {
 public:
-    static bool estimateMotion(
-        const std::vector<Vec2>& before,
-        const std::vector<Vec2>& after,
-        BodyMotion& motion
-    );
-    static bool estimateClimb(
-        const std::vector<Scalar>& before,
-        const std::vector<Scalar>& after,
-        Scalar& climb
-    );
+    static bool estimateMotion(const Vec2* before, const Vec2* after, size_t count, BodyMotion& motion);
+    static bool estimateClimb(const Scalar* before, const Scalar* after, size_t count, Scalar& climb);
+
+    // Convenience overloads; the pointer versions above allocate nothing
+    static bool estimateMotion(const std::vector<Vec2>& before, const std::vector<Vec2>& after, BodyMotion& motion) {
+        return before.size() == after.size() && estimateMotion(before.data(), after.data(), before.size(), motion);
+    }
+    static bool estimateClimb(const std::vector<Scalar>& before, const std::vector<Scalar>& after, Scalar& climb) {
+        return before.size() == after.size() && estimateClimb(before.data(), after.data(), before.size(), climb);
+    }
     void integrate(const BodyMotion& motion);
     void integrateClimb(Scalar climb);
     void reset();

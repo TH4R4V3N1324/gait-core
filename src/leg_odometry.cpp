@@ -8,32 +8,29 @@ namespace gait_core {
  * @brief Find the body motion that best explains how planted feet moved relative to the body
  * @param[in] before Planted foot positions at the start of the update (body frame)
  * @param[in] after The same feet at the end of the update (body frame), in the same order
+ * @param[in] count How many feet
  * @param[out] motion The body's motion, in the body frame at the start of the update
  * @return true if there were enough feet (at least 2) to estimate the motion, false otherwise
  * @note A least-squares rigid fit: the feet are fixed in the world, so after = R(-dyaw) * (before - t).
 */
-bool LegOdometry::estimateMotion(
-    const std::vector<Vec2>& before,
-    const std::vector<Vec2>& after,
-    BodyMotion& motion
-) {
-    if (before.size() < 2 || before.size() != after.size()) {
+bool LegOdometry::estimateMotion(const Vec2* before, const Vec2* after, size_t count, BodyMotion& motion) {
+    if (count < 2) {
         return false;
     }
 
     Vec2 meanBefore = Vec2::Zero();
     Vec2 meanAfter = Vec2::Zero();
-    for (size_t i = 0; i < before.size(); ++i) {
+    for (size_t i = 0; i < count; ++i) {
         meanBefore += before[i];
         meanAfter += after[i];
     }
-    meanBefore /= static_cast<Scalar>(before.size());
-    meanAfter /= static_cast<Scalar>(after.size());
+    meanBefore /= static_cast<Scalar>(count);
+    meanAfter /= static_cast<Scalar>(count);
 
     // Rotation that best maps the feet before onto the feet after
     Scalar sumCos = 0;
     Scalar sumSin = 0;
-    for (size_t i = 0; i < before.size(); ++i) {
+    for (size_t i = 0; i < count; ++i) {
         const Vec2 a = before[i] - meanBefore;
         const Vec2 b = after[i] - meanAfter;
         sumCos += a.x() * b.x() + a.y() * b.y();
@@ -54,24 +51,21 @@ bool LegOdometry::estimateMotion(
  * @brief Find how far the body rose from how planted feet moved up or down relative to it
  * @param[in] before Planted foot heights at the start of the update (level body frame, m)
  * @param[in] after The same feet's heights at the end of the update, in the same order
+ * @param[in] count How many feet
  * @param[out] climb How far the body rose (m)
  * @return true if there were enough feet (at least 2) to estimate the climb, false otherwise
  * @note The feet are fixed in the world, so they drop relative to the body as far as it rises.
  *       The heights must be in a frame levelled by the body's real tilt, or rocking reads as climbing.
 */
-bool LegOdometry::estimateClimb(
-    const std::vector<Scalar>& before,
-    const std::vector<Scalar>& after,
-    Scalar& climb
-) {
-    if (before.size() < 2 || before.size() != after.size()) {
+bool LegOdometry::estimateClimb(const Scalar* before, const Scalar* after, size_t count, Scalar& climb) {
+    if (count < 2) {
         return false;
     }
     Scalar sum = 0;
-    for (size_t i = 0; i < before.size(); ++i) {
+    for (size_t i = 0; i < count; ++i) {
         sum += before[i] - after[i];
     }
-    climb = sum / static_cast<Scalar>(before.size());
+    climb = sum / static_cast<Scalar>(count);
     return true;
 }
 

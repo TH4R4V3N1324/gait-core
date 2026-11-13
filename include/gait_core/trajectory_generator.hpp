@@ -3,8 +3,6 @@
 
 #include <array>
 #include <cstdint>
-#include <functional>
-#include <vector>
 
 #include "gait_core/frame_converter.hpp"
 #include "gait_core/gait_config.hpp"
@@ -36,9 +34,9 @@ struct BodyPose {
 };
 
 struct GaitState {
-    std::vector<std::vector<int>> config;
-    std::array<SwingSpline, MAX_LEGS + 1> swingSplines;
-    std::array<LineSpline, MAX_LEGS + 1> stanceSplines;
+    GaitSchedule config;
+    std::array<SwingSpline, NUM_LEGS> swingSplines;
+    std::array<LineSpline, NUM_LEGS> stanceSplines;
 };
 
 class TrajectoryGenerator {
@@ -50,12 +48,14 @@ public:
         : gaitConfig(geometry), converter(geometry) {}
 
     GaitState gaitState;
+
     void GenerateTrajectories(
-        const std::function<Vec3(int, const Vec3&)>& swingTargetFunc,
-        const std::function<Vec3(int, const Vec3&)>& stanceTargetFunc,
-        const std::array<Vec3, MAX_LEGS + 1>& currentPositions,
+        const std::array<Vec3, NUM_LEGS>& swingTargets,
+        const std::array<Vec3, NUM_LEGS>& stanceTargets,
+        const std::array<Vec3, NUM_LEGS>& currentPositions,
         uint8_t currentPhase
     );
+
     Scalar legYaw(int legNum) const;
     Vec3 legToBody(int legNum, const Vec3& position) const;
     Vec3 bodyToLeg(int legNum, const Vec3& position) const;

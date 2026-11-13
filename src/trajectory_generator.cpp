@@ -29,41 +29,28 @@ void TrajectoryGenerator::EnsureGaitConfig() {
 
 /**
  * @brief Generate swing and stance trajectories for the legs
- * @param[in] swingTargetFunc A function to compute the swing target position for a leg
- * @param[in] stanceTargetFunc A function to compute the stance target position for a leg
+ * @param[in] swingTargets Where each leg in the swinging phase should land (others are ignored)
+ * @param[in] stanceTargets Where each standing leg should end up (swinging legs are ignored)
  * @param[in] currentPositions The current position of each leg
  * @param[in] currentPhase The gait phase whose legs swing
 */
 void TrajectoryGenerator::GenerateTrajectories(
-    const std::function<Vec3(int, const Vec3&)>& swingTargetFunc,
-    const std::function<Vec3(int, const Vec3&)>& stanceTargetFunc,
-    const std::array<Vec3, MAX_LEGS + 1>& currentPositions,
+    const std::array<Vec3, NUM_LEGS>& swingTargets,
+    const std::array<Vec3, NUM_LEGS>& stanceTargets,
+    const std::array<Vec3, NUM_LEGS>& currentPositions,
     uint8_t currentPhase
 ) {
-    // Which legs swing this phase; every other leg is in stance
-    std::array<bool, MAX_LEGS + 1> swinging{};
-    for (int legNum : gaitState.config[currentPhase]) {
-        swinging[legNum] = true;
-    }
-    std::array<bool, MAX_LEGS + 1> standing{};
-    for (size_t idx = 0; idx < gaitState.config.size(); ++idx) {
-        if (idx == currentPhase) continue;
-        for (int legNum : gaitState.config[idx]) {
-            standing[legNum] = true;
-        }
-    }
-
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         gaitState.swingSplines[legNum].active = false;
         gaitState.stanceSplines[legNum].active = false;
     }
 
     // Swing: Bezier from the current foot position to the target
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        if (!swinging[legNum]) continue;
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+        if (!gaitState.config.swingsIn(legNum, currentPhase)) continue;
         SwingSpline& spline = gaitState.swingSplines[legNum];
         const Vec3 start = currentPositions[legNum];
-        const Vec3 end = swingTargetFunc(legNum, start);
+        const Vec3 end = swingTargets[legNum];
 
         if ((end - start).norm() < Scalar(1e-6)) {
             spline.s = 0;
@@ -80,11 +67,11 @@ void TrajectoryGenerator::GenerateTrajectories(
     }
 
     // Stance: straight line from the current foot position to the target
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        if (!standing[legNum]) continue;
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+        if (gaitState.config.swingsIn(legNum, currentPhase)) continue;
         LineSpline& spline = gaitState.stanceSplines[legNum];
         spline.P0 = currentPositions[legNum];
-        spline.P1 = stanceTargetFunc(legNum, currentPositions[legNum]);
+        spline.P1 = stanceTargets[legNum];
         spline.s = 0;
         spline.active = true;
     }
@@ -92,7 +79,7 @@ void TrajectoryGenerator::GenerateTrajectories(
 
 /**
  * @brief Yaw of a leg's frame relative to the body frame
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @return The yaw (rad), matching the coxa joint origins in the URDF
 */
 Scalar TrajectoryGenerator::legYaw(int legNum) const {
@@ -101,7 +88,7 @@ Scalar TrajectoryGenerator::legYaw(int legNum) const {
 
 /**
  * @brief Convert a position in a leg's frame to the body frame
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] position The position in the leg frame
  * @return The position in the body frame
 */
@@ -111,7 +98,7 @@ Vec3 TrajectoryGenerator::legToBody(int legNum, const Vec3& position) const {
 
 /**
  * @brief Convert a position from the body frame to a leg's frame
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] position The position (body frame)
  * @return The position (leg frame)
 */
@@ -121,7 +108,7 @@ Vec3 TrajectoryGenerator::bodyToLeg(int legNum, const Vec3& position) const {
 
 /**
  * @brief Where a planted foot sits relative to its leg once the body takes up a pose
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] groundFoot The foot's position with the body in its neutral pose (leg frame)
  * @param[in] pose The body pose relative to the neutral pose, rotating about the body origin
  * @return The foot's position (leg frame)
@@ -161,7 +148,7 @@ BodyPose TrajectoryGenerator::rotationAbout(Scalar roll, Scalar pitch, const Vec
 
 /**
  * @brief Position of a leg's neutral foot in the body frame
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @return The foot position relative to the body centre (body frame, z = 0)
 */
 Vec3 TrajectoryGenerator::neutralFootInBody(int legNum) const {
@@ -176,7 +163,7 @@ Vec3 TrajectoryGenerator::neutralFootInBody(int legNum) const {
  * @param[in] forward Forward body velocity (m/s)
  * @param[in] left Leftward body velocity (m/s)
  * @param[in] yaw Body yaw rate (rad/s, positive anticlockwise)
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] duration How long the velocity is held (s)
  * @return The displacement (leg frame, z = 0), in the direction the foot swings
  * @note Worked out in the body frame (+x forward, +y left), then rotated into the leg frame.
@@ -189,7 +176,7 @@ Vec3 TrajectoryGenerator::footDisplacement(Scalar forward, Scalar left, Scalar y
 /**
  * @brief Foot displacement in a leg's frame for a commanded body velocity held for a duration
  * @param[in] cmd The commanded body velocity
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] duration How long the velocity is held (s)
  * @return The displacement (leg frame, z = 0), in the direction the foot swings
 */
@@ -202,7 +189,7 @@ Vec3 TrajectoryGenerator::footDisplacement(const VelocityCommand& cmd, int legNu
  * @param[in] forward Forward body velocity (m/s)
  * @param[in] left Leftward body velocity (m/s)
  * @param[in] yaw Body yaw rate (rad/s, positive anticlockwise)
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] footPos The foot position the rotation starts from (leg frame)
  * @param[in] duration How long the velocity is held (s)
  * @return The displacement (leg frame, z = 0), in the direction the foot swings
@@ -217,7 +204,7 @@ Vec3 TrajectoryGenerator::footDisplacementFrom(Scalar forward, Scalar left, Scal
 
 /**
  * @brief Distance from the body centre to a leg's neutral foot position
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @return The horizontal distance (m)
 */
 Scalar TrajectoryGenerator::bodyRadius(int legNum) const {
@@ -230,7 +217,7 @@ Scalar TrajectoryGenerator::bodyRadius(int legNum) const {
 */
 Scalar TrajectoryGenerator::maxBodyRadius() const {
     Scalar radius = 0;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         radius = std::max(radius, bodyRadius(legNum));
     }
     return radius;
@@ -238,7 +225,7 @@ Scalar TrajectoryGenerator::maxBodyRadius() const {
 
 /**
  * @brief Where a swinging foot should land
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] displacement The foot displacement ahead of neutral (leg frame)
  * @return The target foot position (leg frame), at most maxStride from neutral
 */
@@ -248,7 +235,7 @@ Vec3 TrajectoryGenerator::swingTarget(int legNum, const Vec3& displacement) cons
 
 /**
  * @brief Where a stance foot should be at the end of the phase
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] currentPos The foot's current position (leg frame)
  * @param[in] displacement The body's movement over the phase, as a foot displacement (leg frame)
  * @return The target foot position (leg frame), at most maxStride from neutral
@@ -259,7 +246,7 @@ Vec3 TrajectoryGenerator::stanceTarget(int legNum, const Vec3& currentPos, const
 
 /**
  * @brief Keep a foot target within maxStride of neutral and on the ground
- * @param[in] legNum The leg number
+ * @param[in] legNum The leg
  * @param[in] target The foot target (leg frame)
  * @return The clamped target, with z at the current body height
 */

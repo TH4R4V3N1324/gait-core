@@ -16,7 +16,7 @@ namespace gait_core {
 */
 class FrameConverter {
 public:
-    std::array<LegConfig, MAX_LEGS + 1> legConfigs;   // indexed by leg number, [0] unused
+    std::array<LegConfig, NUM_LEGS> legConfigs;   // indexed by Leg
 
     /**
      * @brief Initialise the mounting configuration of each leg
@@ -28,7 +28,7 @@ public:
     /**
      * @brief Convert position from leg frame to body frame
      * @param[in] position Position in leg frame (m)
-     * @param[in] leg_num Leg number (1-6)
+     * @param[in] leg_num The leg
      * @return Position in body frame (m)
     */
     Vec3 legToBodyFrame(const Vec3& position, int leg_num) const {
@@ -45,7 +45,7 @@ public:
     /**
      * @brief Convert position from body frame to leg frame
      * @param[in] position Position in body frame (m)
-     * @param[in] leg_num Leg number (1-6)
+     * @param[in] leg_num The leg
      * @return Position in leg frame (m)
     */
     Vec3 bodyToLegFrame(const Vec3& position, int leg_num) const {
@@ -62,7 +62,7 @@ public:
 
     /**
      * @brief Get the leg configuration for a specific leg
-     * @param[in] leg_num Leg number (1-6)
+     * @param[in] leg_num The leg
      * @return Reference to leg configuration
     */
     const LegConfig& getLegConfig(int leg_num) const {
@@ -71,7 +71,7 @@ public:
 
     /**
      * @brief Get coxa attachment point in body frame
-     * @param[in] leg_num Leg number (1-6)
+     * @param[in] leg_num The leg
      * @return Position of coxa joint in body frame (m)
     */
     Vec3 getCoxaPosition(int leg_num) const {

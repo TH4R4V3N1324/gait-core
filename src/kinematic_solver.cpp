@@ -8,7 +8,7 @@ namespace gait_core {
 /**
  * @brief Inverse kinematics, calculates the joint angles based on the desired position
  * @param[in] target The desired position in 3D space (leg frame, X outward)
- * @param[in] mirrored Whether this is a mirrored leg (legs 4, 5, 6)
+ * @param[in] mirrored Whether this is a mirrored leg (the left side)
  * @return The calculated joint angles
  * @note If the target is outside the workspace, angles are clamped to the nearest valid solution
 */

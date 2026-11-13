@@ -8,22 +8,34 @@ GaitConfig::GaitConfig(const RobotGeometry& geometry)
       homePos(geometry.standReach, 0, 0),
       startPos(geometry.standReach, 0, geometry.standHeight) {
     startPosition.fill(startPos);
-    startPosition[0] = Vec3::Zero();
 }
 
 /**
- * @brief Get the leg configuration based on the specified gait
+ * @brief Which legs swing in each phase of a gait
  * @param[in] gait The gait type
- * @return The groups of legs that swing together, in phase order
+ * @return The schedule, empty for an unknown gait
 */
-std::vector<std::vector<int>> GaitConfig::getGaitConfig(Gait gait) const {
+GaitSchedule GaitConfig::getGaitConfig(Gait gait) const {
     switch (gait) {
         case GAIT_TRIPOD:
-            return {{1, 3, 5}, {2, 4, 6}};
+            // Two alternating tripods, each stable on its own
+            return GaitSchedule::fromGroups({
+                {LEG_FRONT_RIGHT, LEG_REAR_RIGHT, LEG_MIDDLE_LEFT},
+                {LEG_MIDDLE_RIGHT, LEG_REAR_LEFT, LEG_FRONT_LEFT},
+            });
         case GAIT_RIPPLE:
-            return {{3, 6}, {2, 4}, {1, 5}};
+            // Two legs at a time, one from each side
+            return GaitSchedule::fromGroups({
+                {LEG_REAR_RIGHT, LEG_FRONT_LEFT},
+                {LEG_MIDDLE_RIGHT, LEG_REAR_LEFT},
+                {LEG_FRONT_RIGHT, LEG_MIDDLE_LEFT},
+            });
         case GAIT_WAVE:
-            return {{3}, {2}, {1}, {4}, {5}, {6}};
+            // One leg at a time: the right side rear to front, then the left side rear to front
+            return GaitSchedule::fromGroups({
+                {LEG_REAR_RIGHT}, {LEG_MIDDLE_RIGHT}, {LEG_FRONT_RIGHT},
+                {LEG_REAR_LEFT}, {LEG_MIDDLE_LEFT}, {LEG_FRONT_LEFT},
+            });
         default:
             return {};
     }
@@ -68,7 +80,7 @@ void GaitConfig::setMode(Mode mode) {
 void GaitConfig::setHeight(Scalar height) {
     currentHeight = height;
     startPos.z() = currentHeight;
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         startPosition[leg] = startPos;
     }
 }
@@ -79,7 +91,7 @@ void GaitConfig::setHeight(Scalar height) {
 */
 void GaitConfig::setReach(Scalar reach) {
     startPos.x() = reach;
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
         startPosition[leg] = startPos;
     }
 }

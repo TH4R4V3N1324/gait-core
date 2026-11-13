@@ -4,7 +4,6 @@
 #include <array>
 #include <cstdint>
 #include <functional>
-#include <string>
 
 #include "gait_core/gait_config.hpp"
 #include "gait_core/kinematic_solver.hpp"
@@ -107,10 +106,10 @@ enum class LogLevel : uint8_t { Debug, Info, Warn };
 */
 struct JointFeedback {
     Timestamp stamp = 0;
-    std::array<JointAngles, MAX_LEGS + 1> angles{};  // rad, indexed by leg number
-    std::array<bool, MAX_LEGS + 1> present{};        // which legs' three joints were all reported
+    std::array<JointAngles, NUM_LEGS> angles{};  // rad, indexed by Leg
+    std::array<bool, NUM_LEGS> present{};        // which legs' three joints were all reported
     bool hasEffort = false;                          // whether effort is filled in
-    std::array<Vec3, MAX_LEGS + 1> effort{};         // N m (coxa, femur, tibia) the servos apply
+    std::array<Vec3, NUM_LEGS> effort{};         // N m (coxa, femur, tibia) the servos apply
 };
 
 /**
@@ -123,9 +122,12 @@ struct ImuSample {
     Scalar yaw = Scalar(0);
 };
 
+/**
+ * @brief Whether a command was accepted, and a message saying what happened or why not
+*/
 struct CommandResult {
     bool success = false;
-    std::string message;
+    char message[96] = "";
 };
 
 /**
@@ -133,7 +135,7 @@ struct CommandResult {
 */
 struct GaitOutput {
     bool commanded = false;                           // false while waiting for joint states
-    std::array<JointAngles, MAX_LEGS + 1> joints{};  // rad, indexed by leg number
+    std::array<JointAngles, NUM_LEGS> joints{};  // rad, indexed by Leg
 };
 
 /**
@@ -149,7 +151,7 @@ public:
     virtual bool ready() = 0;
     /**
      * @brief Move a swinging foot's landing target and set its lift
-     * @param[in] legNum The leg number
+     * @param[in] legNum The leg
      * @param[in,out] target The landing target (leg frame)
      * @param[in] swingStart Where the swing lifted off (leg frame)
      * @param[in,out] swingLift The swing's lift (m, 0 = the default step_height)
@@ -217,7 +219,7 @@ public:
     Scalar imuPitch() const { return body_pitch; }
 
     // ---- Hooks ------------------------------------------------------------------------------
-    std::function<void(LogLevel, const std::string&)> log;  // optional
+    std::function<void(LogLevel, const char*)> log;           // optional
     std::function<void(bool seated)> seatedChanged;         // optional: a sit or stand began or ended
     FootholdPlanner* footholdPlanner = nullptr;             // optional, not owned
 
@@ -255,15 +257,15 @@ private:
     };
     MotionIntent current_motion_intent{};
 
-    std::array<Vec3, MAX_LEGS + 1> current_leg_positions;   // commanded foot positions (leg frame)
-    std::array<Vec3, MAX_LEGS + 1> measured_leg_positions;  // foot positions from joint state feedback (leg frame)
-    std::array<Vec3, MAX_LEGS + 1> startup_start_positions;
+    std::array<Vec3, NUM_LEGS> current_leg_positions;   // commanded foot positions (leg frame)
+    std::array<Vec3, NUM_LEGS> measured_leg_positions;  // foot positions from joint state feedback (leg frame)
+    std::array<Vec3, NUM_LEGS> startup_start_positions;
     bool startup_planned = false;
 
     // Walking
-    std::array<Vec3, MAX_LEGS + 1> swing_start;   // lift-off position (leg frame)
-    std::array<Vec3, MAX_LEGS + 1> swing_target;  // landing target (leg frame), rate limited
-    std::array<bool, MAX_LEGS + 1> leg_swinging{};
+    std::array<Vec3, NUM_LEGS> swing_start;   // lift-off position (leg frame)
+    std::array<Vec3, NUM_LEGS> swing_target;  // landing target (leg frame), rate limited
+    std::array<bool, NUM_LEGS> leg_swinging{};
 
     // Idle return and return to start (function statics in the ROS node)
     int return_counter = 0;
@@ -276,17 +278,17 @@ private:
     BodyPose tilt_command;
     BodyPose tilt_correction;
     BodyPose tilt_applied;
-    std::array<Vec3, MAX_LEGS + 1> tilt_ground_feet;
+    std::array<Vec3, NUM_LEGS> tilt_ground_feet;
     bool tilt_active = false;
     Scalar tilt_yaw_reference = Scalar(0);
 
     // Foot forces and contact
-    std::array<Vec3, MAX_LEGS + 1> foot_forces{};
-    std::array<bool, MAX_LEGS + 1> foot_contact{};
-    std::array<bool, MAX_LEGS + 1> foot_force_updated{};
+    std::array<Vec3, NUM_LEGS> foot_forces{};
+    std::array<bool, NUM_LEGS> foot_contact{};
+    std::array<bool, NUM_LEGS> foot_force_updated{};
     bool has_foot_forces = false;
     Timestamp last_foot_force_stamp = 0;
-    std::array<Scalar, MAX_LEGS + 1> foot_force_offset{};
+    std::array<Scalar, NUM_LEGS> foot_force_offset{};
     Scalar push_ratio = Scalar(0);
     bool is_blocked = false;
 
@@ -297,19 +299,19 @@ private:
     Scalar stand_height;
 
     // Uneven ground
-    std::array<Scalar, MAX_LEGS + 1> terrain_offset{};
-    std::array<bool, MAX_LEGS + 1> seeking{};
-    std::array<bool, MAX_LEGS + 1> landing_check{};
-    std::array<Scalar, MAX_LEGS + 1> unloaded_time{};
-    std::array<int, MAX_LEGS + 1> touchdown_ticks{};
-    std::array<int, MAX_LEGS + 1> stumble_ticks{};
-    std::array<Scalar, MAX_LEGS + 1> stumble_target{};
-    std::array<Scalar, MAX_LEGS + 1> stumble_boost{};
-    std::array<Scalar, MAX_LEGS + 1> swing_lift{};
+    std::array<Scalar, NUM_LEGS> terrain_offset{};
+    std::array<bool, NUM_LEGS> seeking{};
+    std::array<bool, NUM_LEGS> landing_check{};
+    std::array<Scalar, NUM_LEGS> unloaded_time{};
+    std::array<int, NUM_LEGS> touchdown_ticks{};
+    std::array<int, NUM_LEGS> stumble_ticks{};
+    std::array<Scalar, NUM_LEGS> stumble_target{};
+    std::array<Scalar, NUM_LEGS> stumble_boost{};
+    std::array<Scalar, NUM_LEGS> swing_lift{};
     Scalar ground_level = Scalar(0);
 
     // Load balancing
-    std::array<Scalar, MAX_LEGS + 1> foot_height_offset{};
+    std::array<Scalar, NUM_LEGS> foot_height_offset{};
 
     // Leveling while walking
     Scalar walk_level_roll = Scalar(0);
@@ -317,18 +319,18 @@ private:
     BodyPose walk_level;
     Scalar tilt_saved_roll = Scalar(0);
     Scalar tilt_saved_pitch = Scalar(0);
-    std::array<Vec3, MAX_LEGS + 1> tilt_saved_feet;
+    std::array<Vec3, NUM_LEGS> tilt_saved_feet;
 
     // Leg odometry
     LegOdometry legOdometry;
-    std::array<Vec2, MAX_LEGS + 1> previous_feet;
-    std::array<Scalar, MAX_LEGS + 1> previous_feet_z{};
-    std::array<Scalar, MAX_LEGS + 1> planted_time{};
+    std::array<Vec2, NUM_LEGS> previous_feet;
+    std::array<Scalar, NUM_LEGS> previous_feet_z{};
+    std::array<Scalar, NUM_LEGS> planted_time{};
     static constexpr Scalar CLIMB_SETTLE_TIME = static_cast<Scalar>(0.1);
     static constexpr Scalar CLIMB_ANCHOR_TIME = static_cast<Scalar>(0.5);
     bool climb_anchored = false;
     Scalar odom_start_height = Scalar(0);
-    std::array<bool, MAX_LEGS + 1> previous_contact{};
+    std::array<bool, NUM_LEGS> previous_contact{};
     Timestamp previous_feet_stamp = 0;
     bool has_previous_feet = false;
 
@@ -336,8 +338,10 @@ private:
     std::array<Timestamp, 4> last_throttled_log{};
     bool throttled_log_sent[4] = {false, false, false, false};
 
-    void emit(LogLevel level, const std::string& message);
-    void emitThrottled(int key, Scalar period, LogLevel level, const std::string& message);
+    // Log a printf-style message; nothing is formatted unless log is set (and, throttled, due)
+    void emit(LogLevel level, const char* format, ...);
+    void emitThrottled(int key, Scalar period, LogLevel level, const char* format, ...);
+    bool throttleDue(int key, Scalar period);
 
     void updateFootForces(const JointFeedback& feedback);
     bool updateLegOdometry(Timestamp stamp);
@@ -351,17 +355,17 @@ private:
     bool reachable(const Vec3& target);
     Vec3 limitSwingLift(int legNum, const Vec3& target, Scalar groundZ);
     void updateWalkLeveling(Scalar dt);
-    bool tiltFeasible(const BodyPose& pose, std::array<Vec3, MAX_LEGS + 1>& targets);
+    bool tiltFeasible(const BodyPose& pose, std::array<Vec3, NUM_LEGS>& targets);
     void tilt(Scalar dt, bool exiting);
     void sitTick(Scalar dt);
     bool startup(Scalar dt);
-    std::array<Vec3, MAX_LEGS + 1> legTargets(Scalar ds);
-    std::array<Vec3, MAX_LEGS + 1> walkTargets(Scalar forward, Scalar left, Scalar yaw, Scalar ds, Scalar moveDt);
-    void sendFootTargets(const std::array<Vec3, MAX_LEGS + 1>& targets, Scalar dt);
+    std::array<Vec3, NUM_LEGS> legTargets(Scalar ds);
+    std::array<Vec3, NUM_LEGS> walkTargets(Scalar forward, Scalar left, Scalar yaw, Scalar ds, Scalar moveDt);
+    void sendFootTargets(const std::array<Vec3, NUM_LEGS>& targets, Scalar dt);
     void commandFoot(const Vec3& target, int legNum);
     void applyPendingGait();
     bool isSwinging(int legNum) const;
-    Scalar jointSpeedScale(const std::array<Vec3, MAX_LEGS + 1>& targets, Scalar dt);
+    Scalar jointSpeedScale(const std::array<Vec3, NUM_LEGS>& targets, Scalar dt);
     void performLegStep(Scalar dt, bool idle, bool handlePhaseTransition);
     void returnToStart(Scalar dt);
     bool handleIdleReturn(Scalar dt);
