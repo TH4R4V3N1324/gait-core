@@ -91,6 +91,28 @@ if(NOT CMAKE_CROSSCOMPILING)
   set_target_properties(gait_core_behaviour PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
+# ---------------------------------------------------------------------------
+# Header-only, dependency-free libraries (no Eigen):
+#   gait_core::protocol  the controller <-> robot packets (hexapod_protocol/packets.h, also valid C)
+#   gait_core::teleop    the gamepad layout every stack shares (hexapod_teleop/gamepad_teleop.hpp)
+# ---------------------------------------------------------------------------
+add_library(gait_core_protocol INTERFACE)
+add_library(gait_core::protocol ALIAS gait_core_protocol)
+set_target_properties(gait_core_protocol PROPERTIES EXPORT_NAME protocol)
+target_include_directories(gait_core_protocol INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+add_library(gait_core_teleop INTERFACE)
+add_library(gait_core::teleop ALIAS gait_core_teleop)
+set_target_properties(gait_core_teleop PROPERTIES EXPORT_NAME teleop)
+target_include_directories(gait_core_teleop INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_compile_features(gait_core_teleop INTERFACE cxx_std_17)
+
 if(GAIT_CORE_TOP_LEVEL)
   foreach(target gait_core gait_core_behaviour)
     if(MSVC)
@@ -108,7 +130,7 @@ if(GAIT_CORE_TOP_LEVEL)
   include(GNUInstallDirs)
   include(CMakePackageConfigHelpers)
 
-  set(GAIT_CORE_EXPORT_TARGETS gait_core gait_core_behaviour)
+  set(GAIT_CORE_EXPORT_TARGETS gait_core gait_core_behaviour gait_core_protocol gait_core_teleop)
   if(TARGET gait_core_eigen)
     list(APPEND GAIT_CORE_EXPORT_TARGETS gait_core_eigen)
     install(DIRECTORY ${GAIT_CORE_EIGEN_DIR}/Eigen

@@ -44,3 +44,13 @@ endforeach()
 
 # Runs the gait and the behaviours together, counting every heap allocation
 gait_core_add_test(test_no_heap gait_core_behaviour)
+
+# Protocol: sizes and values from C++, plus a C translation unit, since controllers include it from
+# C. Linked against gait_core too, to check Gait and Mode against the engine's values.
+enable_language(C)
+gait_core_add_test(protocol/test_packets gait_core)
+target_sources(test_packets PRIVATE protocol/packets_c.c)
+target_link_libraries(test_packets PRIVATE gait_core_protocol)
+
+gait_core_add_test(teleop/test_gamepad_teleop gait_core_teleop)
+target_link_libraries(test_gamepad_teleop PRIVATE gait_core_protocol)

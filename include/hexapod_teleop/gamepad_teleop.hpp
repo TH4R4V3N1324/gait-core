@@ -1,0 +1,180 @@
+#ifndef HEXAPOD_TELEOP__GAMEPAD_TELEOP_HPP
+#define HEXAPOD_TELEOP__GAMEPAD_TELEOP_HPP
+
+#include <optional>
+
+namespace hexapod_teleop {
+
+/**
+ * @brief Gait engine features the face buttons switch, in button order (A, B, X, Y)
+ * @note The values equal the protocol's GaitFeature (hexapod_protocol/packets.h)
+ */
+enum class Feature : int { TerrainAdaptation, WalkLeveling, LoadBalancing, TiltLeveling };
+constexpr int NUM_FEATURES = 4;
+
+/** @brief The GaitParams name (and ROS parameter) of a feature */
+constexpr const char* featureName(Feature f) {
+    switch (f) {
+        case Feature::TerrainAdaptation: return "terrain_adaptation";
+        case Feature::WalkLeveling: return "walk_leveling";
+        case Feature::LoadBalancing: return "load_balancing";
+        case Feature::TiltLeveling: return "tilt_leveling";
+    }
+    return "";
+}
+
+/**
+ * @brief A gamepad, already normalised
+ * @note Buttons are by position, named Xbox-style: a is the bottom face button whatever the
+ *       gamepad (Cross on PlayStation). Apply any stick dead zone before passing it in.
+ */
+struct GamepadState {
+    float leftX = 0, leftY = 0;     // -1..1: X positive right, Y positive forward
+    float rightX = 0, rightY = 0;
+    float leftTrigger = 0, rightTrigger = 0;  // 0 released .. 1
+    bool dpadUp = false, dpadDown = false;
+    bool a = false, b = false, x = false, y = false;
+    bool leftBumper = false, rightBumper = false;
+    bool start = false;             // Start, Options, Menu, +
+    bool back = false;              // Back, Create, Share, View, -
+};
+
+/** @brief What the robot is doing, as far as the caller knows */
+struct RobotState {
+    bool seated = true;     // seated, or sitting down or standing up
+    bool tiltMode = false;
+};
+
+struct TeleopParams {
+    double powerDownHold = 2.0;   // s, hold RB this long to power down instead of sitting/standing
+    double heightRepeat = 0.3;    // s between height steps while the D-pad is held
+};
+
+/**
+ * @brief One update's worth of commands
+ * @note The continuous values run -1..1; multiply by the robot's limits. Body frame: x forward,
+ *       y left, z up. A robot uses the walking ones outside tilt mode and the tilt ones in it.
+ */
+struct TeleopOutput {
+    // Walking: velocity as a fraction of the gait's top speed
+    float vx = 0, vy = 0, wz = 0;
+    // Tilt mode: body shift as a fraction of the largest shift, angles as a fraction of the
+    // largest tilt. roll > 0 lowers the right side, pitch > 0 lowers the nose, yaw > 0 turns left.
+    float shiftX = 0, shiftY = 0, shiftZ = 0;
+    float roll = 0, pitch = 0, yaw = 0;
+
+    // Events, at most once per press
+    bool nextMode = false;                  // Start
+    bool nextGait = false;                  // Back
+    bool toggleFeature[NUM_FEATURES] = {};  // A, B, X, Y: switch that feature to its other state
+    std::optional<bool> sit;                // RB released: true sit down, false stand up
+    bool powerDown = false;                 // RB held for powerDownHold: sit, then servo power off
+    int heightStep = 0;                     // D-pad, walking and standing only: +1 up, -1 down
+};
+
+/**
+ * @brief The hexapod gamepad layout, shared by every stack so a gamepad drives every robot the same
+ * @note Walking: left stick drives, right stick X turns. Tilt mode: left stick shifts the body,
+ *       right stick rolls and pitches it, the triggers yaw it and the D-pad raises and lowers it.
+ *       Start: next mode. Back: next gait. A, B, X, Y: terrain adaptation, walk leveling, load
+ *       balancing, tilt leveling on/off. RB, when released: sit down if standing, otherwise stand
+ *       up; held for powerDownHold, power down instead. D-pad while walking and standing: body
+ *       height a step at a time, repeating every heightRepeat while held.
+ *
+ *       Call update() for every gamepad report, and regularly (say every 50 ms) while a button may
+ *       be held, so the power-down hold and the height repeat fire on time. No allocation.
+ */
+class GamepadTeleop {
+public:
+    explicit GamepadTeleop(TeleopParams params = {}) : p(params) {}
+
+    const TeleopParams& params() const { return p; }
+
+    TeleopOutput update(const GamepadState& pad, const RobotState& robot, double nowSeconds) {
+        TeleopOutput out;
+
+        out.vx = pad.leftY;
+        out.vy = -pad.leftX;
+        out.wz = -pad.rightX;
+
+        const float dpad = (pad.dpadUp ? 1.0f : 0.0f) - (pad.dpadDown ? 1.0f : 0.0f);
+        out.shiftX = pad.leftY;
+        out.shiftY = -pad.leftX;
+        out.shiftZ = dpad;
+        out.roll = pad.rightX;
+        out.pitch = pad.rightY;
+        out.yaw = pad.leftTrigger - pad.rightTrigger;
+
+        out.nextMode = pressed(pad.start, prev.start);
+        out.nextGait = pressed(pad.back, prev.back);
+        out.toggleFeature[0] = pressed(pad.a, prev.a);
+        out.toggleFeature[1] = pressed(pad.b, prev.b);
+        out.toggleFeature[2] = pressed(pad.x, prev.x);
+        out.toggleFeature[3] = pressed(pad.y, prev.y);
+
+        // RB: sit/stand on release, or power down once held long enough
+        if (pressed(pad.rightBumper, prev.rightBumper)) {
+            sitHeldSince = nowSeconds;
+            powerDownSent = false;
+        }
+        if (pad.rightBumper && !powerDownSent && nowSeconds - sitHeldSince >= p.powerDownHold) {
+            out.powerDown = true;
+            powerDownSent = true;
+        }
+        if (!pad.rightBumper && prev.rightBumper && !powerDownSent) {
+            out.sit = !robot.seated;
+        }
+
+        // D-pad: a step on a press, then every heightRepeat while held. In tilt mode it shifts
+        // the body instead (shiftZ), and the engine refuses height changes while seated.
+        const int direction = dpad > 0 ? 1 : dpad < 0 ? -1 : 0;
+        if (direction == 0) {
+            heightDirection = 0;
+        } else if (direction != heightDirection || nowSeconds >= nextHeightStep) {
+            heightDirection = direction;
+            nextHeightStep = nowSeconds + p.heightRepeat;
+            if (!robot.seated && !robot.tiltMode) out.heightStep = direction;
+        }
+
+        prev = pad;
+        return out;
+    }
+
+    /** @brief Forget held buttons, e.g. when the gamepad disconnects */
+    void reset() {
+        prev = GamepadState{};
+        powerDownSent = false;
+        heightDirection = 0;
+    }
+
+private:
+    static bool pressed(bool now, bool before) { return now && !before; }
+
+    TeleopParams p;
+    GamepadState prev;
+    double sitHeldSince = 0;
+    bool powerDownSent = false;
+    int heightDirection = 0;
+    double nextHeightStep = 0;
+};
+
+/**
+ * @brief The body height for a D-pad step (positive heights, any unit)
+ * @param current Where the body is now
+ * @param lastTarget The height last asked for, if any
+ * @note Steps from lastTarget while the body is still within a step of it, so quick presses add up;
+ *       otherwise from where the body is (the robot sat and stood, or something else moved it).
+ */
+inline float stepHeight(float current, std::optional<float> lastTarget, int direction, float step,
+                        float minHeight, float maxHeight) {
+    const float diff = lastTarget ? *lastTarget - current : 0.0f;
+    const float from = (lastTarget && diff < step && diff > -step) ? *lastTarget : current;
+    float target = from + static_cast<float>(direction) * step;
+    if (target < minHeight) target = minHeight;
+    if (target > maxHeight) target = maxHeight;
+    return target;
+}
+
+}  // namespace hexapod_teleop
+
+#endif  // HEXAPOD_TELEOP__GAMEPAD_TELEOP_HPP
