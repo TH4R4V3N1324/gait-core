@@ -10,6 +10,7 @@ using gait_core::CommandResult;
 using gait_core::GaitEngine;
 using gait_core::GaitOutput;
 using gait_core::GaitParams;
+using gait_core::ImuSample;
 using gait_core::JointFeedback;
 using gait_core::NUM_LEGS;
 using gait_core::Scalar;
@@ -139,6 +140,23 @@ Robot standingRobot(const GaitParams& params = GaitParams{}) {
     robot.engine.sit(false);
     robot.run(6.0);
     return robot;
+}
+
+TEST(GaitEngine, ControllerTiltLatchesNeutralAndRecentresOnRelease) {
+    Robot robot = standingRobot();
+    ASSERT_TRUE(robot.engine.setMode(gait_core::MODE_TILT).success);
+
+    ImuSample controller;
+    controller.stamp = robot.now;
+    controller.roll = static_cast<Scalar>(0.4);
+    robot.engine.setControllerImu(controller, true);
+    EXPECT_TRUE(robot.engine.controllerTiltActive());
+
+    controller.stamp = robot.now + DT_NS;
+    controller.roll = static_cast<Scalar>(0.5);
+    robot.engine.setControllerImu(controller, true);
+    robot.engine.setControllerImu(controller, false);
+    EXPECT_FALSE(robot.engine.controllerTiltActive());
 }
 
 TEST(GaitEngine, ServosStayOffUntilTheFirstStand) {

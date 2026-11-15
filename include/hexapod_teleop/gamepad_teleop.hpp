@@ -37,6 +37,10 @@ struct GamepadState {
     bool leftBumper = false, rightBumper = false;
     bool start = false;             // Start, Options, Menu, +
     bool back = false;              // Back, Create, Share, View, -
+    bool controllerImu = false;     // whether controllerRoll/Pitch/Yaw are valid
+    float controllerRoll = 0;       // rad
+    float controllerPitch = 0;      // rad
+    float controllerYaw = 0;        // rad
 };
 
 /** @brief What the robot is doing, as far as the caller knows */
@@ -62,6 +66,8 @@ struct TeleopOutput {
     // largest tilt. roll > 0 lowers the right side, pitch > 0 lowers the nose, yaw > 0 turns left.
     float shiftX = 0, shiftY = 0, shiftZ = 0;
     float roll = 0, pitch = 0, yaw = 0;
+    bool controllerTilt = false;    // left bumper held with a valid controller IMU
+    float controllerRoll = 0, controllerPitch = 0, controllerYaw = 0;  // rad
 
     // Events, at most once per press
     bool nextMode = false;                  // Start
@@ -77,9 +83,10 @@ struct TeleopOutput {
  * @note Walking: left stick drives, right stick X turns. Tilt mode: left stick shifts the body,
  *       right stick rolls and pitches it, the triggers yaw it and the D-pad raises and lowers it.
  *       Start: next mode. Back: next gait. A, B, X, Y: terrain adaptation, walk leveling, load
- *       balancing, tilt leveling on/off. RB, when released: sit down if standing, otherwise stand
- *       up; held for powerDownHold, power down instead. D-pad while walking and standing: body
- *       height a step at a time, repeating every heightRepeat while held.
+ *       balancing, tilt leveling on/off. LB, when held with a controller IMU, follows its
+ *       orientation in tilt mode and recentres on release. RB, when released: sit down if standing,
+ *       otherwise stand up; held for powerDownHold, power down instead. D-pad while walking and
+ *       standing: body height a step at a time, repeating every heightRepeat while held.
  *
  *       Call update() for every gamepad report, and regularly (say every 50 ms) while a button may
  *       be held, so the power-down hold and the height repeat fire on time. No allocation.
@@ -104,6 +111,10 @@ public:
         out.roll = pad.rightX;
         out.pitch = pad.rightY;
         out.yaw = pad.leftTrigger - pad.rightTrigger;
+        out.controllerTilt = pad.leftBumper && pad.controllerImu;
+        out.controllerRoll = pad.controllerRoll;
+        out.controllerPitch = pad.controllerPitch;
+        out.controllerYaw = pad.controllerYaw;
 
         out.nextMode = pressed(pad.start, prev.start);
         out.nextGait = pressed(pad.back, prev.back);

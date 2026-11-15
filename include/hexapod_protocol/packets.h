@@ -15,10 +15,12 @@
 #include <stdint.h>
 
 /** First byte of every packet. A receiver drops packets with any other version. */
-#define HEXAPOD_PROTOCOL_VERSION 2
+#define HEXAPOD_PROTOCOL_VERSION 3
 
 /** Stick and tilt values run from -HEXAPOD_AXIS_FULL_SCALE to +HEXAPOD_AXIS_FULL_SCALE - 1. */
 #define HEXAPOD_AXIS_FULL_SCALE 128
+/** Controller orientation fields are in radians multiplied by this value. */
+#define HEXAPOD_ANGLE_MILLIRAD_SCALE 1000
 
 #ifdef __cplusplus
 #define HEXAPOD_ENUM(name) enum name : uint8_t
@@ -92,6 +94,11 @@ typedef struct ControlPacket {
     int16_t currentHeight;    /* body height in mm, 0 = unchanged */
     Command command;
     int16_t commandArgs[3];
+    /* Controller orientation in milliradians. Valid while controllerTilt is non-zero. */
+    int16_t controllerRoll;
+    int16_t controllerPitch;
+    int16_t controllerYaw;
+    uint8_t controllerTilt;  /* left bumper held and a controller IMU is available */
 } ControlPacket;
 
 /** Robot -> controller, in reply to each ControlPacket. */
@@ -107,11 +114,11 @@ typedef struct HexPacket {
 #pragma pack(pop)
 
 #ifdef __cplusplus
-static_assert(sizeof(ControlPacket) == 22, "ControlPacket layout changed: bump HEXAPOD_PROTOCOL_VERSION");
+static_assert(sizeof(ControlPacket) == 29, "ControlPacket layout changed: bump HEXAPOD_PROTOCOL_VERSION");
 static_assert(sizeof(HexPacket) == 12, "HexPacket layout changed: bump HEXAPOD_PROTOCOL_VERSION");
 #else
-_Static_assert(sizeof(ControlPacket) == 22, "ControlPacket layout changed: bump HEXAPOD_PROTOCOL_VERSION");
-_Static_assert(sizeof(HexPacket) == 12, "HexPacket layout changed: bump HEXAPOD_PROTOCOL_VERSION");
+typedef char hexapod_control_packet_size_check[(sizeof(ControlPacket) == 29) ? 1 : -1];
+typedef char hexapod_hex_packet_size_check[(sizeof(HexPacket) == 12) ? 1 : -1];
 #endif
 
 #endif /* HEXAPOD_PROTOCOL__PACKETS_H */

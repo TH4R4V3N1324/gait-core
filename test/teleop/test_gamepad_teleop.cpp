@@ -46,6 +46,25 @@ TEST(GamepadTeleop, SticksFollowTheBodyFrame) {
     EXPECT_FLOAT_EQ(out.yaw, 0.4f);     // left trigger turns left
 }
 
+TEST(GamepadTeleop, LeftBumperHoldsControllerTilt) {
+    GamepadTeleop teleop;
+    GamepadState pad;
+    pad.leftBumper = true;
+    pad.controllerImu = true;
+    pad.controllerRoll = 0.2f;
+    pad.controllerPitch = -0.1f;
+    pad.controllerYaw = 0.3f;
+
+    const TeleopOutput out = teleop.update(pad, TILT, 0.0);
+    EXPECT_TRUE(out.controllerTilt);
+    EXPECT_FLOAT_EQ(out.controllerRoll, 0.2f);
+    EXPECT_FLOAT_EQ(out.controllerPitch, -0.1f);
+    EXPECT_FLOAT_EQ(out.controllerYaw, 0.3f);
+
+    pad.leftBumper = false;
+    EXPECT_FALSE(teleop.update(pad, TILT, 0.1).controllerTilt);
+}
+
 TEST(GamepadTeleop, StartAndBackStepOncePerPress) {
     GamepadTeleop teleop;
     GamepadState pad;

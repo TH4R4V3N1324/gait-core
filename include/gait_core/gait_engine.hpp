@@ -155,10 +155,10 @@ public:
 /**
  * @brief The whole gait: startup, walking, sitting, tilt mode, leveling, load balancing, terrain
  *        adaptation and leg odometry, with no ROS or hardware dependency
- * @note Call update() at a steady rate, and feed it joint states, IMU orientation and velocity
- *       commands as they arrive. Every update() returns all 18 joint targets once the joint states
- *       have arrived. Optional inputs (efforts, IMU) can simply never be given: the features that
- *       need them stay off.
+ * @note Call update() at a steady rate, and feed it joint states, IMU orientation, controller
+ *       orientation and velocity commands as they arrive. Every update() returns all 18 joint
+ *       targets once the joint states have arrived. Optional inputs (efforts, IMU, controller
+ *       orientation) can simply never be given: the features that need them stay off.
  *
  *       Servo power: GaitOutput::servoPower says whether the servos should be powered. Unpowered,
  *       the engine commands nothing; a stand command powers them, waits for fresh joint states, moves
@@ -185,6 +185,14 @@ public:
     */
     bool onJointStates(const JointFeedback& feedback);
     void servoPowerLost();
+    /**
+     * @brief Use a controller's orientation as the requested tilt while active
+     * @param[in] sample Controller roll, pitch and yaw (rad), and when received
+     * @param[in] active True while the hold button is pressed
+     * @note The first active sample is latched as neutral. Releasing or losing the
+     *       controller recentres the requested pose.
+    */
+    void setControllerImu(const ImuSample& sample, bool active);
 
     // ---- Commands ---------------------------------------------------------------------------
     CommandResult setGait(uint8_t gait);
@@ -221,6 +229,7 @@ public:
     Scalar floorRise() const;
     Scalar imuRoll() const { return body_roll; }
     Scalar imuPitch() const { return body_pitch; }
+    bool controllerTiltActive() const { return controller_tilt_active; }
 
     // ---- Hooks ------------------------------------------------------------------------------
     std::function<void(LogLevel, const char*)> log;           // optional
@@ -250,6 +259,13 @@ private:
     Scalar body_yaw = Scalar(0);
     Timestamp last_imu_time = 0;
     bool has_imu = false;
+
+    // Controller orientation following
+    Scalar controller_reference_roll = Scalar(0);
+    Scalar controller_reference_pitch = Scalar(0);
+    Scalar controller_reference_yaw = Scalar(0);
+    Timestamp last_controller_imu_time = 0;
+    bool controller_tilt_active = false;
 
     bool has_joint_states = false;
     bool positions_initialized = false;
@@ -360,6 +376,7 @@ private:
     bool updateLegOdometry(Timestamp stamp);
     Eigen::Quaternion<Scalar> imuTilt() const;
     bool imuFresh() const;
+    bool controllerImuFresh() const;
     bool feetAtStart();
     Vec3 plantedStart(int legNum);
     bool forcesValid();

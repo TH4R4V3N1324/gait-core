@@ -27,7 +27,7 @@ static_assert(static_cast<int>(::MODE_TILT) == gait_core::MODE_TILT, "");
 static_assert(static_cast<int>(::MODE_CONFIG) == gait_core::NUM_MODES, "");
 
 TEST(Packets, SizesAreFixed) {
-    EXPECT_EQ(sizeof(ControlPacket), 22u);
+    EXPECT_EQ(sizeof(ControlPacket), 29u);
     EXPECT_EQ(sizeof(HexPacket), 12u);
     EXPECT_EQ(sizeof(Command), 1u);
     EXPECT_EQ(sizeof(Gait), 1u);

@@ -116,8 +116,36 @@ void GaitEngine::setImu(const ImuSample& sample) {
     has_imu = true;
 }
 
+void GaitEngine::setControllerImu(const ImuSample& sample, bool active) {
+    if (!active) {
+        if (controller_tilt_active) {
+            setBodyPose(0, 0, 0, Vec3::Zero());
+        }
+        controller_tilt_active = false;
+        return;
+    }
+
+    if (!controller_tilt_active) {
+        controller_reference_roll = sample.roll;
+        controller_reference_pitch = sample.pitch;
+        controller_reference_yaw = sample.yaw;
+        controller_tilt_active = true;
+    }
+
+    setBodyPose(
+        std::remainder(sample.roll - controller_reference_roll, 2 * kPi),
+        std::remainder(sample.pitch - controller_reference_pitch, 2 * kPi),
+        std::remainder(sample.yaw - controller_reference_yaw, 2 * kPi),
+        Vec3::Zero());
+    last_controller_imu_time = sample.stamp;
+}
+
 bool GaitEngine::imuFresh() const {
     return has_imu && toSeconds(now_ - last_imu_time) < 0.2;
+}
+
+bool GaitEngine::controllerImuFresh() const {
+    return controller_tilt_active && toSeconds(now_ - last_controller_imu_time) < 0.2;
 }
 
 /**
@@ -561,6 +589,10 @@ Scalar GaitEngine::maxFootSpeed() const {
 
 GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
     now_ = now;
+    if (controller_tilt_active && !controllerImuFresh()) {
+        setControllerImu(ImuSample{}, false);
+        emit(LogLevel::Warn, "Controller orientation timed out: tilt pose recentred");
+    }
     if (full_state_since_update) {
         last_full_state = now;
         full_state_since_update = false;
@@ -1459,7 +1491,7 @@ void GaitEngine::tilt(Scalar dt, bool exiting) {
         const Scalar gain = p.tilt_level_gain * dt;
         tilt_correction.roll += gain * (tilt_command.roll - body_roll);
         tilt_correction.pitch += gain * (tilt_command.pitch - body_pitch);
-        if (p.tilt_lock_yaw) {
+        if (p.tilt_lock_yaw || controller_tilt_active) {
             tilt_correction.yaw += gain * std::remainder(tilt_command.yaw - (body_yaw - tilt_yaw_reference), 2 * kPi);
         }
     }

@@ -48,7 +48,7 @@ well as C++, since some controller firmware is C.
 
 | Header | Contents |
 | --- | --- |
-| `packets.h` | `ControlPacket` (sticks, tilt yaw and height, body height, a command), `HexPacket` (height, gait, mode, seated / servo power / feature flags, calibration offsets), `Command`, `Gait`, `Mode` and `GaitFeature`. Both start with `HEXAPOD_PROTOCOL_VERSION` (2); a receiver drops any other version |
+| `packets.h` | `ControlPacket` (sticks, tilt yaw and height, optional controller orientation hold), `HexPacket` (height, gait, mode, seated / servo power / feature flags, calibration offsets), `Command`, `Gait`, `Mode` and `GaitFeature`. Both start with `HEXAPOD_PROTOCOL_VERSION` (3); a receiver drops any other version |
 
 `Gait` and `Mode` equal the engine's values (checked in the tests). To change the layout, bump the
 version and the size checks, and append rather than reorder enum values.
@@ -69,6 +69,7 @@ The layout, used by hexapod-ros2's `controller_teleop` and hexapod-controller's 
 | LT / RT [L2 / R2] | — | Yaw left / right |
 | D-pad up / down | Body height up / down a step, repeating while held (not while seated) | Raise / lower the body |
 | RB [R1] | On release: sit down if standing, otherwise stand up. Held 2 s: power down instead | The same |
+| LB [L1] | Hold to follow the controller IMU orientation, release to recenter | The same |
 | Start [Options] | Next mode | Next mode |
 | Back [Create] | Next gait | Next gait |
 | A, B, X, Y [Cross, Circle, Square, Triangle] | Terrain adaptation, walk leveling, load balancing, tilt leveling on/off | The same |
