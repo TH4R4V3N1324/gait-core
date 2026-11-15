@@ -65,6 +65,38 @@ TEST(GamepadTeleop, LeftBumperHoldsControllerTilt) {
     EXPECT_FALSE(teleop.update(pad, TILT, 0.1).controllerTilt);
 }
 
+TEST(GamepadTeleop, ControllerOrientationDrivesWalkingAndRecentresOnPress) {
+    GamepadTeleop teleop;
+    GamepadState pad;
+    pad.leftBumper = true;
+    pad.controllerImu = true;
+    EXPECT_FLOAT_EQ(teleop.update(pad, STANDING, 0.0).vx, 0.0f);
+
+    pad.controllerPitch = -0.175f;
+    pad.controllerRoll = 0.175f;
+    pad.controllerYaw = 0.25f;
+    const TeleopOutput out = teleop.update(pad, STANDING, 0.1);
+    EXPECT_NEAR(out.vx, 0.5f, 1e-6f);
+    EXPECT_NEAR(out.vy, -0.5f, 1e-6f);
+    EXPECT_NEAR(out.wz, 0.5f, 1e-6f);
+
+    pad.leftBumper = false;
+    teleop.update(pad, STANDING, 0.2);
+    pad.leftBumper = true;
+    EXPECT_FLOAT_EQ(teleop.update(pad, STANDING, 0.3).vx, 0.0f);
+}
+
+TEST(GamepadTeleop, ControllerOrientationDoesNotDriveTiltMode) {
+    GamepadTeleop teleop;
+    GamepadState pad;
+    pad.leftBumper = true;
+    pad.controllerImu = true;
+    pad.controllerPitch = -0.2f;
+    pad.leftY = 0.25f;
+    const TeleopOutput out = teleop.update(pad, TILT, 0.0);
+    EXPECT_FLOAT_EQ(out.vx, 0.25f);
+}
+
 TEST(GamepadTeleop, StartAndBackStepOncePerPress) {
     GamepadTeleop teleop;
     GamepadState pad;

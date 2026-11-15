@@ -1,6 +1,8 @@
 #ifndef HEXAPOD_TELEOP__GAMEPAD_TELEOP_HPP
 #define HEXAPOD_TELEOP__GAMEPAD_TELEOP_HPP
 
+#include <algorithm>
+#include <cmath>
 #include <optional>
 
 namespace hexapod_teleop {
@@ -52,6 +54,8 @@ struct RobotState {
 struct TeleopParams {
     double powerDownHold = 2.0;   // s, hold RB this long to power down instead of sitting/standing
     double heightRepeat = 0.3;    // s between height steps while the D-pad is held
+    double controllerDriveAngle = 0.35;     // rad, controller pitch/roll for full walking speed
+    double controllerDriveYawAngle = 0.5;   // rad, controller yaw for full walking rotation
 };
 
 /**
@@ -80,13 +84,15 @@ struct TeleopOutput {
 
 /**
  * @brief The hexapod gamepad layout, shared by every stack so a gamepad drives every robot the same
- * @note Walking: left stick drives, right stick X turns. Tilt mode: left stick shifts the body,
- *       right stick rolls and pitches it, the triggers yaw it and the D-pad raises and lowers it.
- *       Start: next mode. Back: next gait. A, B, X, Y: terrain adaptation, walk leveling, load
- *       balancing, tilt leveling on/off. LB, when held with a controller IMU, follows its
- *       orientation in tilt mode and recentres on release. RB, when released: sit down if standing,
- *       otherwise stand up; held for powerDownHold, power down instead. D-pad while walking and
- *       standing: body height a step at a time, repeating every heightRepeat while held.
+ * @note Walking: left stick drives, right stick X turns. While LB is held with a controller IMU,
+ *       controller pitch drives forward/back, roll strafes, and yaw turns; the orientation at
+ *       LB press is neutral and the configured angles are full speed. Tilt mode: left stick shifts
+ *       the body, right stick rolls and pitches it, the triggers yaw it and the D-pad raises and
+ *       lowers it; LB follows the controller orientation instead. Start: next mode. Back: next gait.
+ *       A, B, X, Y: terrain adaptation, walk leveling, load balancing, tilt leveling on/off.
+ *       RB, when released: sit down if standing, otherwise stand up; held for powerDownHold, power
+ *       down instead. D-pad while walking and standing: body height a step at a time, repeating
+ *       every heightRepeat while held.
  *
  *       Call update() for every gamepad report, and regularly (say every 50 ms) while a button may
  *       be held, so the power-down hold and the height repeat fire on time. No allocation.
@@ -115,6 +121,25 @@ public:
         out.controllerRoll = pad.controllerRoll;
         out.controllerPitch = pad.controllerPitch;
         out.controllerYaw = pad.controllerYaw;
+
+        const bool controller_active = pad.leftBumper && pad.controllerImu;
+        if (controller_active && !robot.tiltMode) {
+            if (!controller_drive_active) {
+                controller_reference_roll = pad.controllerRoll;
+                controller_reference_pitch = pad.controllerPitch;
+                controller_reference_yaw = pad.controllerYaw;
+                controller_drive_active = true;
+            }
+            out.vx = controllerDriveAxis(
+                pad.controllerPitch - controller_reference_pitch, p.controllerDriveAngle, -1.0f);
+            out.vy = controllerDriveAxis(
+                pad.controllerRoll - controller_reference_roll, p.controllerDriveAngle, -1.0f);
+            out.wz = controllerDriveAxis(
+                std::remainder(pad.controllerYaw - controller_reference_yaw, 2.0 * 3.14159265358979323846),
+                p.controllerDriveYawAngle, 1.0f);
+        } else {
+            controller_drive_active = false;
+        }
 
         out.nextMode = pressed(pad.start, prev.start);
         out.nextGait = pressed(pad.back, prev.back);
@@ -156,10 +181,15 @@ public:
         prev = GamepadState{};
         powerDownSent = false;
         heightDirection = 0;
+        controller_drive_active = false;
     }
 
 private:
     static bool pressed(bool now, bool before) { return now && !before; }
+    static float controllerDriveAxis(float angle, double fullScale, float sign) {
+        if (fullScale <= 0.0) return 0.0f;
+        return std::clamp(sign * static_cast<float>(angle / fullScale), -1.0f, 1.0f);
+    }
 
     TeleopParams p;
     GamepadState prev;
@@ -167,6 +197,10 @@ private:
     bool powerDownSent = false;
     int heightDirection = 0;
     double nextHeightStep = 0;
+    bool controller_drive_active = false;
+    float controller_reference_roll = 0;
+    float controller_reference_pitch = 0;
+    float controller_reference_yaw = 0;
 };
 
 /**
