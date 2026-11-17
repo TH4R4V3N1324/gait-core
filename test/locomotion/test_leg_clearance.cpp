@@ -6,15 +6,15 @@
 #include <vector>
 
 #include "test_common.hpp"
-#include "gait_core/kinematics/kinematic_solver.hpp"
+#include "gait_core/kinematics/yaw_pitch_pitch_leg.hpp"
 #include "gait_core/locomotion/trajectory_generator.hpp"
 
-using gait_core::JointAngles;
-using gait_core::KinematicSolver;
+using gait_core::JointVec;
+using gait_core::YawPitchPitchLeg;
 using gait_core::TrajectoryGenerator;
 using Vector3d = gait_core::Vec3;
 
-// Link lengths used by KinematicSolver (m)
+// Explorer's link lengths (m)
 static constexpr double COXA = 0.063;
 static constexpr double FEMUR = 0.100;
 static constexpr double TIBIA = 0.186;
@@ -32,10 +32,10 @@ static constexpr double MIN_CLEARANCE = 0.01;
  * @param[in] angles The leg's joint angles
  * @return Coxa joint, femur joint, knee and foot (leg frame)
 */
-static std::array<Vector3d, 4> legChain(const JointAngles& angles) {
-    double femurElevation = -angles.femur;
-    double tibiaElevation = femurElevation - angles.tibia;
-    Vector3d dir(std::cos(angles.coxa), std::sin(angles.coxa), 0.0);
+static std::array<Vector3d, 4> legChain(const JointVec& angles) {
+    double femurElevation = -angles(1);
+    double tibiaElevation = femurElevation - angles(2);
+    Vector3d dir(std::cos(angles(0)), std::sin(angles(0)), 0.0);
     Vector3d femurJoint = dir * COXA;
     Vector3d knee = femurJoint + dir * FEMUR * std::cos(femurElevation) + Vector3d(0, 0, FEMUR * std::sin(femurElevation));
     Vector3d foot = knee + dir * TIBIA * std::cos(tibiaElevation) + Vector3d(0, 0, TIBIA * std::sin(tibiaElevation));
@@ -62,14 +62,15 @@ static double segmentDistance(const Vector3d& p0, const Vector3d& p1, const Vect
 }
 
 TEST(LegClearance, ChainMatchesForwardKinematics) {
-    KinematicSolver solver{explorerRobot().legs[0]};
-    JointAngles angles{0.3, -0.4, 0.2};
-    EXPECT_NEAR((legChain(angles)[3] - solver.solveFK(angles)).norm(), 0.0, tol(1e-9));
+    const YawPitchPitchLeg solver{explorerRobot().legs[0]};
+    JointVec angles(3);
+    angles << gait_core::Scalar(0.3), gait_core::Scalar(-0.4), gait_core::Scalar(0.2);
+    EXPECT_NEAR((legChain(angles)[3] - solver.fk(angles)).norm(), 0.0, tol(1e-9));
 }
 
 TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
     TrajectoryGenerator gen{explorerRobot()};
-    KinematicSolver solver{explorerRobot().legs[0]};
+    const YawPitchPitchLeg solver{explorerRobot().legs[0]};
     const double radii[3] = {COXA_RADIUS, FEMUR_RADIUS, TIBIA_RADIUS};
 
     // Foot offsets across the stride circle, at heights from walking (standing and mid-swing) and
@@ -89,8 +90,9 @@ TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
     auto segmentsFor = [&](int leg, const Vector3d& offset, double lift) -> std::optional<std::array<Vector3d, 4>> {
         Vector3d foot = gen.swingTarget(leg, offset);   // neutral + offset, on the ground
         foot.z() += lift;
-        JointAngles angles = solver.solveIK(foot);
-        if ((solver.solveFK(angles) - foot).norm() > 1e-3) {
+        JointVec angles;
+        solver.ik(foot, JointVec::Zero(3), angles);
+        if ((solver.fk(angles) - foot).norm() > 1e-3) {
             return std::nullopt;
         }
         auto chain = legChain(angles);

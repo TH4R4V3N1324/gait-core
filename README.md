@@ -46,7 +46,6 @@ controllers can use them too.
 | `leg_kinematics.hpp` | `LegKinematics`: FK, IK from a seed, Jacobian, and foot force from joint torques, for any number of joints |
 | `chain_kinematics.hpp` | `ChainKinematics`: any `LegDefinition`, with exact FK/Jacobian and numerical IK (damped least squares) |
 | `yaw_pitch_pitch_leg.hpp` | `YawPitchPitchLeg`: exact analytic kinematics for a yaw joint then two pitch joints (coxa/femur/tibia) |
-| `kinematic_solver.hpp` | `KinematicSolver`: the original coxa/femur/tibia maths that `YawPitchPitchLeg` uses |
 
 ### Locomotion (`locomotion/`)
 

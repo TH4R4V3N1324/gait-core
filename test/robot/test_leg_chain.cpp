@@ -3,19 +3,18 @@
 #include <cmath>
 
 #include "test_common.hpp"
-#include "gait_core/kinematics/kinematic_solver.hpp"
+#include "gait_core/kinematics/yaw_pitch_pitch_leg.hpp"
 #include "gait_core/robot/robot_definition.hpp"
 
 using gait_core::AngleAxis;
-using gait_core::JointAngles;
 using gait_core::JointDefinition;
 using gait_core::JointVec;
-using gait_core::KinematicSolver;
 using gait_core::LegDefinition;
 using gait_core::Mat3;
 using gait_core::explorer::NUM_LEGS;
 using gait_core::RobotDefinition;
 using gait_core::Scalar;
+using gait_core::YawPitchPitchLeg;
 using Vector3d = gait_core::Vec3;
 
 namespace {
@@ -77,10 +76,10 @@ TEST(LegChain, HandWorkedPoses) {
     EXPECT_NEAR((chainFoot(leg, angles(0, 0, half)) - Vector3d(0.163, 0, -0.186)).norm(), 0.0, tol(1e-9));
 }
 
-TEST(LegChain, MatchesKinematicSolverAcrossTheJointRanges) {
+TEST(LegChain, MatchesTheAnalyticSolverAcrossTheJointRanges) {
     // Every leg, on a grid covering each joint's whole range
     const RobotDefinition robot = explorerRobot();
-    const KinematicSolver solver(robot.legs[0]);  // every explorer leg has the same chain
+    const YawPitchPitchLeg solver(robot.legs[0]);  // every explorer leg has the same chain
     constexpr int STEPS = 12;
     double worst = 0;
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
@@ -92,7 +91,7 @@ TEST(LegChain, MatchesKinematicSolverAcrossTheJointRanges) {
             for (int b = 0; b <= STEPS; ++b) {
                 for (int c = 0; c <= STEPS; ++c) {
                     const JointVec q = angles(at(0, a), at(1, b), at(2, c));
-                    const Vector3d expected = solver.solveFK(JointAngles{q(0), q(1), q(2)});
+                    const Vector3d expected = solver.fk(q);
                     const double error = (chainFoot(def, q) - expected).norm();
                     worst = std::max(worst, error);
                     ASSERT_LT(error, tol(1e-12)) << "leg " << leg << " at " << q.transpose();
@@ -116,12 +115,3 @@ TEST(LegChain, ExplorerMatchesTheUrdf) {
     }
 }
 
-TEST(LegChain, TheAnalyticSolverTakesItsLengthsFromTheLeg) {
-    // A longer femur: the solver built from this leg must use it, not explorer's
-    LegDefinition leg = explorerRobot().legs[0];
-    leg.joints[2].origin.x() = static_cast<Scalar>(0.12);
-    const KinematicSolver solver(leg);
-    EXPECT_NEAR((solver.solveFK(JointAngles{0, 0, 0}) - Vector3d(static_cast<Scalar>(0.369), 0, 0)).norm(), 0.0, tol(1e-9));
-    const JointVec q = angles(0.3, -0.5, 1.4);
-    EXPECT_NEAR((chainFoot(leg, q) - solver.solveFK(JointAngles{q(0), q(1), q(2)})).norm(), 0.0, tol(1e-12));
-}

@@ -56,7 +56,6 @@ endif()
 add_library(gait_core STATIC
   src/robot/gait_pattern.cpp
   src/kinematics/chain_kinematics.cpp
-  src/kinematics/kinematic_solver.cpp
   src/kinematics/yaw_pitch_pitch_leg.cpp
   src/locomotion/gait_config.cpp
   src/locomotion/gait_engine.cpp
