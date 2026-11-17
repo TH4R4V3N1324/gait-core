@@ -5,6 +5,7 @@
 // the leg count (a quadruped), and the joints per leg (four, and two). Only the tests use them.
 
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,8 @@ inline Vec3 v(double x, double y, double z) {
 }
 
 inline JointDefinition revolute(const Vec3& origin, const Vec3& axis, double lower, double upper) {
-    return {origin, axis, static_cast<Scalar>(lower), static_cast<Scalar>(upper)};
+    return {origin, axis, static_cast<Scalar>(lower), static_cast<Scalar>(upper),
+            std::numeric_limits<Scalar>::infinity()};
 }
 
 /**

@@ -25,7 +25,8 @@ struct GaitParams {
     Scalar phase_duration = Scalar(1.0);        // s per gait phase at low speeds
     Scalar min_phase_duration = Scalar(0.7);    // s, shortest phase allowed, which sets each gait's top speed
     Scalar max_foot_speed = Scalar(1.5);        // m/s, cap on how fast a foot target can move
-    Scalar max_joint_speed = Scalar(4.0);       // rad/s, phases slow down so no joint exceeds this
+    Scalar max_joint_speed = Scalar(4.0);       // rad/s, phases slow down so no joint exceeds this; a
+                                                // joint's own JointDefinition::max_velocity overrides it
     Scalar idle_return_delay = Scalar(2.0);     // s idle before the legs return to their start positions
     Scalar startup_duration = Scalar(1.0);      // s for the startup move to the start positions
     Scalar max_target_speed = Scalar(0.5);      // m/s, how fast a landing target can move when the command changes

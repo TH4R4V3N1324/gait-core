@@ -1,5 +1,7 @@
 #include "gait_core/robots/explorer.hpp"
 
+#include <limits>
+
 namespace gait_core::explorer {
 
 static_assert(kMaxLegs >= NUM_LEGS, "explorer has 6 legs: GAIT_CORE_MAX_LEGS must be at least 6");
@@ -13,9 +15,11 @@ namespace {
  * @param axis The joint's unit axis, in the leg frame at zero angles
  * @param lower The joint's lower limit (rad)
  * @param upper The joint's upper limit (rad)
+ * @param maxVelocity The fastest its servo may turn (rad/s); infinity for GaitParams::max_joint_speed
 */
-JointDefinition revolute(const Vec3& origin, const Vec3& axis, double lower, double upper) {
-    return {origin, axis, static_cast<Scalar>(lower), static_cast<Scalar>(upper)};
+JointDefinition revolute(const Vec3& origin, const Vec3& axis, double lower, double upper,
+                         double maxVelocity = std::numeric_limits<double>::infinity()) {
+    return {origin, axis, static_cast<Scalar>(lower), static_cast<Scalar>(upper), static_cast<Scalar>(maxVelocity)};
 }
 
 /**

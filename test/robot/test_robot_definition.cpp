@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -208,7 +209,7 @@ TEST(LegSolver, TheAnalyticSolverOnlyWhereItFits) {
     robot.legs[0].joints[2].origin.x() += static_cast<Scalar>(0.01);   // a longer femur: still fits
     robot.legs[1].joints[1].axis = Vector3d::UnitX();                  // femur about the wrong axis
     robot.legs[2].numJoints = 4;                                        // an extra joint
-    robot.legs[2].joints[3] = {robot.legs[2].foot, Vector3d::UnitY(), -1, 1};
+    robot.legs[2].joints[3] = {robot.legs[2].foot, Vector3d::UnitY(), -1, 1, std::numeric_limits<Scalar>::infinity()};
     robot.legs[3].foot.z() = static_cast<Scalar>(-0.02);               // foot not straight out
     robot.legs[4].joints[1].origin.y() = static_cast<Scalar>(0.01);    // femur joint off to the side
     const GaitEngine engine(gait_core::GaitParams{}, robot);

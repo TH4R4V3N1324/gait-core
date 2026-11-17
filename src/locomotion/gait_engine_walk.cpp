@@ -299,7 +299,7 @@ void GaitEngine::walk(Scalar dt) {
     // that stay down
     const bool swayHold = updateSway(dt, velocityIdle);
 
-    // Advance, slowing the whole gait if a joint would move faster than max_joint_speed
+    // Advance, slowing the whole gait if a joint would move faster than its speed limit
     Scalar ds = (velocityIdle || swayHold) ? S(0.0) : dt / current_phase_duration;
     Scalar moveDt = (velocityIdle || swayHold) ? S(0.0) : dt;
     auto targets = walkTargets(forward, left, yaw, ds, moveDt);

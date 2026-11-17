@@ -169,7 +169,7 @@ void GaitEngine::sendFootTargets(const std::array<Vec3, kMaxLegs>& targets, Scal
  * @return true once the sequence is complete, false while it is still running
  * @note Waits for joint states first, so the move starts from the measured leg positions instead
  *       of assuming a pose. The move takes startup_duration, or longer if a joint would otherwise
- *       exceed max_joint_speed. The robot is then seated, and stands up if stand_on_startup is set
+ *       exceed its speed limit. The robot is then seated, and stands up if stand_on_startup is set
  *       (or a stand was asked for meanwhile); otherwise it waits for one.
 */
 bool GaitEngine::startup(Scalar dt) {
@@ -271,23 +271,31 @@ std::array<Vec3, kMaxLegs> GaitEngine::legTargets(Scalar ds) {
 }
 
 /**
- * @brief Work out how much to slow this tick so no joint moves faster than max_joint_speed
+ * @brief Work out how much to slow this tick so no joint moves faster than its speed limit
+ * @note Each joint's limit is its JointDefinition::max_velocity, or max_joint_speed if it sets none
  * @param[in] targets The foot target of each leg for this tick (leg frame)
  * @param[in] dt The time since the last tick (s)
  * @return A factor from 0 to 1 to scale this tick's progress by (1 = full speed)
 */
 Scalar GaitEngine::jointSpeedScale(const std::array<Vec3, kMaxLegs>& targets, Scalar dt) {
-    Scalar max_delta = 0;
+    Scalar scale = S(1.0);
     for (int legNum = 0; legNum < numLegs(); ++legNum) {
         const LegKinematics& leg = kinematics(legNum);
         JointVec from;
         JointVec to;
         leg.ik(current_leg_positions[legNum], output.joints[legNum], from);
         leg.ik(targets[legNum], from, to);
-        max_delta = std::max(max_delta, (to - from).cwiseAbs().maxCoeff());
+        const LegDefinition& def = robot.legs[legNum];
+        const int joints = std::min<int>(static_cast<int>(to.size()), def.numJoints);
+        for (int j = 0; j < joints; ++j) {
+            const Scalar delta = std::abs(to(j) - from(j));
+            const Scalar allowed = def.joints[j].velocityLimit(p.max_joint_speed) * dt;
+            if (delta > allowed) {
+                scale = std::min(scale, allowed / delta);
+            }
+        }
     }
-    const Scalar allowed = p.max_joint_speed * dt;
-    return (max_delta > allowed) ? allowed / max_delta : S(1.0);
+    return scale;
 }
 
 /**

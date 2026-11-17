@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <type_traits>
 
 #include "test_common.hpp"
@@ -37,7 +38,8 @@ Vector3d v(double x, double y, double z) {
 }
 
 JointDefinition revolute(const Vector3d& origin, const Vector3d& axis, double lower, double upper) {
-    return {origin, axis, static_cast<Scalar>(lower), static_cast<Scalar>(upper)};
+    return {origin, axis, static_cast<Scalar>(lower), static_cast<Scalar>(upper),
+            std::numeric_limits<Scalar>::infinity()};
 }
 
 /**

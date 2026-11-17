@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -651,4 +652,96 @@ TEST(GaitEngine, SwayReturnsToCentreWhenTheRobotStops) {
     robot.engine.setVelocity({0, 0, 0});
     robot.run(10.0);
     EXPECT_LT(robot.engine.bodySway().norm(), 1e-6);
+}
+
+// ---- Per-joint speed limits ------------------------------------------------------------------
+
+namespace {
+
+/**
+ * @brief Explorer with a speed limit on some of its joints
+ * @param[in] joint Which joint of every leg to limit (0 coxa, 1 femur, 2 tibia), or -1 for all
+ * @param[in] maxVelocity The limit (rad/s)
+*/
+gait_core::RobotDefinition explorerWithJointLimit(int joint, double maxVelocity) {
+    gait_core::RobotDefinition def = explorerRobot();
+    for (int leg = 0; leg < def.numLegs; ++leg) {
+        for (int j = 0; j < def.legs[leg].numJoints; ++j) {
+            if (joint < 0 || j == joint) {
+                def.legs[leg].joints[j].max_velocity = static_cast<Scalar>(maxVelocity);
+            }
+        }
+    }
+    return def;
+}
+
+/**
+ * @brief How fast each joint moved while walking
+*/
+struct JointSpeeds {
+    std::vector<double> fastest = std::vector<double>(3, 0.0);   // rad/s, per joint, over every leg
+    std::vector<int> ticksOver = std::vector<int>(3, 0);         // leg-ticks above the given limit
+    int samples = 0;                                             // leg-ticks measured, per joint
+};
+
+/**
+ * @brief Stands a robot up, then walks it forward, measuring each joint's speed while walking
+ * @param[in] limit Speed to count the ticks above (rad/s)
+*/
+JointSpeeds walkAndMeasureJointSpeeds(Robot& robot, double seconds, double limit = 1e9) {
+    robot.run(3.0);
+    robot.engine.sit(false);
+    robot.run(6.0);
+    robot.engine.setVelocity({static_cast<Scalar>(0.15), 0, 0});
+    JointSpeeds result;
+    auto last = robot.feedback.angles;
+    const int ticks = static_cast<int>(std::lround(seconds / 0.01));
+    for (int i = 0; i < ticks; ++i) {
+        robot.run(0.01);
+        for (int leg = 0; leg < NUM_LEGS; ++leg) {
+            for (int j = 0; j < 3; ++j) {
+                const double speed = std::abs(robot.feedback.angles[leg](j) - last[leg](j)) / 0.01;
+                result.fastest[j] = std::max(result.fastest[j], speed);
+                result.ticksOver[j] += speed > limit ? 1 : 0;
+            }
+            ++result.samples;
+        }
+        last = robot.feedback.angles;
+    }
+    return result;
+}
+
+}  // namespace
+
+TEST(GaitEngine, AJointsOwnSpeedLimitHoldsOnlyThatJointBack) {
+    Robot unlimited;
+    const JointSpeeds free = walkAndMeasureJointSpeeds(unlimited, 4.0);
+    ASSERT_GT(free.fastest[1], 1.0) << "the femurs must outrun the limit for the test to mean anything";
+
+    // e.g. a slower servo on the femurs than on the coxas and tibias
+    const double limit = 0.5;
+    Robot slowFemurs{GaitParams{}, explorerWithJointLimit(1, limit)};
+    const JointSpeeds limited = walkAndMeasureJointSpeeds(slowFemurs, 4.0, limit * 1.05);
+    // The limiter can let a leg overshoot for a single tick as a phase hands over from one gait
+    // group to the next (as it does with max_joint_speed alone); otherwise the femurs hold to it
+    EXPECT_LE(limited.ticksOver[1], limited.samples / 100) << "femur ticks over the limit";
+    EXPECT_LT(limited.fastest[1], free.fastest[1]) << "femur";
+    // The whole gait slows to keep the femurs in, so it covers less ground
+    EXPECT_LT(slowFemurs.engine.odometry().x(), unlimited.engine.odometry().x() - 0.05);
+}
+
+TEST(GaitEngine, JointSpeedLimitsOverrideTheGlobalOne) {
+    // A global limit far too slow to walk at, overridden on every joint by the default's 4 rad/s,
+    // walks exactly as the default does
+    GaitParams slow;
+    slow.max_joint_speed = static_cast<Scalar>(0.3);
+    Robot overridden{slow, explorerWithJointLimit(-1, 4.0)};
+    Robot reference;
+    walkAndMeasureJointSpeeds(overridden, 3.0);
+    walkAndMeasureJointSpeeds(reference, 3.0);
+    EXPECT_NEAR(overridden.engine.odometry().x(), reference.engine.odometry().x(), tol(1e-9));
+
+    Robot globallySlow{slow, explorerRobot()};
+    walkAndMeasureJointSpeeds(globallySlow, 3.0);
+    EXPECT_LT(globallySlow.engine.odometry().x(), reference.engine.odometry().x() - 0.05);
 }
