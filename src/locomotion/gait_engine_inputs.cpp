@@ -67,6 +67,7 @@ bool GaitEngine::onJointStates(const JointFeedback& feedback) {
             continue;
         }
         measured_leg_positions[legNum] = leg.fk(feedback.angles[legNum]);
+        measured_angles[legNum] = feedback.angles[legNum];
     }
     has_joint_states = all_found;
     full_state_since_update = full_state_since_update || all_found;

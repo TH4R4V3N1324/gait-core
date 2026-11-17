@@ -102,7 +102,9 @@ void GaitEngine::returnToStart(Scalar dt) {
         return;
     }
 
-    if (feetAtStart()) {
+    // Only between phases: mid-swing, a foot within the tolerance of its start is still in the air,
+    // and stopping there would leave it hovering for the walk to drop in a single tick
+    if (phase_progress == 0 && feetAtStart()) {
         idleReturning = false;
         return_counter = 0;
         phase_progress = 0;
@@ -275,9 +277,10 @@ void GaitEngine::walk(Scalar dt) {
         stumble_boost[legNum] += std::clamp(stumble_target[legNum] - stumble_boost[legNum], -S(0.5) * dt, S(0.5) * dt);
     }
 
-    // Swing landing targets follow the command, at a limited rate. Both ends stay inside the
-    // stride circle, so every point in between does too.
-    const Scalar maxTargetStep = p.max_target_speed * dt;
+    // Swing landing targets follow the command, at a limited rate, slowed as much as the gait last
+    // was (a target moving at full rate would carry the joints past their speed limits). Both ends
+    // stay inside the stride circle, so every point in between does too.
+    const Scalar maxTargetStep = p.max_target_speed * dt * walk_speed_scale;
     const bool useMap = p.terrain_map && p.terrain_adaptation && forcesValid() &&
         footholdPlanner != nullptr && footholdPlanner->ready();
     for (int legNum = 0; legNum < numLegs(); ++legNum) {
@@ -304,6 +307,7 @@ void GaitEngine::walk(Scalar dt) {
     Scalar moveDt = (velocityIdle || swayHold) ? S(0.0) : dt;
     auto targets = walkTargets(forward, left, yaw, ds, moveDt);
     const Scalar scale = jointSpeedScale(targets, dt);
+    walk_speed_scale = scale;
     if (scale < 1) {
         ds *= scale;
         moveDt *= scale;

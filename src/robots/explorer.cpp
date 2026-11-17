@@ -73,7 +73,7 @@ RobotDefinition robot() {
     g.standReach  = static_cast<Scalar>(0.177);
     g.standHeight = static_cast<Scalar>(-0.134);
 
-    g.maxStride = static_cast<Scalar>(0.06);
+    g.maxStride = static_cast<Scalar>(0.07);
 
     // Indexed by the Gait names, which controllers and the ROS node use as gait ids
     g.numGaits = NUM_GAITS;

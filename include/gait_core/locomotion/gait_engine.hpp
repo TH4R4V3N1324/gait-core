@@ -23,7 +23,7 @@ namespace gait_core {
 struct GaitParams {
     // Timing
     Scalar phase_duration = Scalar(1.0);        // s per gait phase at low speeds
-    Scalar min_phase_duration = Scalar(0.7);    // s, shortest phase allowed, which sets each gait's top speed
+    Scalar min_phase_duration = Scalar(0.55);   // s, shortest phase allowed, which sets each gait's top speed
     Scalar max_foot_speed = Scalar(1.5);        // m/s, cap on how fast a foot target can move
     Scalar max_joint_speed = Scalar(4.0);       // rad/s, phases slow down so no joint exceeds this; a
                                                 // joint's own JointDefinition::max_velocity overrides it
@@ -323,6 +323,7 @@ private:
     Scalar phase_progress = Scalar(0);    // fraction of the current phase completed, 0 to 1
     Scalar startup_progress = Scalar(0);  // fraction of the startup move completed, 0 to 1
     Scalar current_phase_duration = Scalar(1);  // s, duration chosen for the phase in progress
+    Scalar walk_speed_scale = Scalar(1);  // last walk tick's jointSpeedScale, which slows the landing targets too
 
     // IMU
     Scalar body_roll = Scalar(0);
@@ -357,6 +358,7 @@ private:
 
     std::array<Vec3, kMaxLegs> current_leg_positions;   // commanded foot positions (leg frame)
     std::array<Vec3, kMaxLegs> measured_leg_positions;  // foot positions from joint state feedback (leg frame)
+    std::array<JointVec, kMaxLegs> measured_angles;     // the joint angles they came from (rad)
     std::array<Vec3, kMaxLegs> startup_start_positions;
     bool startup_planned = false;
 
@@ -433,8 +435,8 @@ private:
     bool has_previous_feet = false;
 
     // Throttled log messages: when each was last sent
-    std::array<Timestamp, 8> last_throttled_log{};
-    std::array<bool, 8> throttled_log_sent{};
+    std::array<Timestamp, 9> last_throttled_log{};
+    std::array<bool, 9> throttled_log_sent{};
 
     std::array<Scalar, kMaxGaits> gait_margin{};   // gaitStabilityMargin, worked out once
     std::array<bool, kMaxGaits> gait_sways{};      // gaitSways
@@ -478,7 +480,7 @@ private:
     std::array<Vec3, kMaxLegs> legTargets(Scalar ds);
     std::array<Vec3, kMaxLegs> walkTargets(Scalar forward, Scalar left, Scalar yaw, Scalar ds, Scalar moveDt);
     void sendFootTargets(const std::array<Vec3, kMaxLegs>& targets, Scalar dt);
-    void commandFoot(const Vec3& target, int legNum);
+    void commandFoot(const Vec3& target, int legNum, Scalar dt);
     void applyPendingGait();
     bool isSwinging(int legNum) const;
     Scalar jointSpeedScale(const std::array<Vec3, kMaxLegs>& targets, Scalar dt);

@@ -119,16 +119,45 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
  * @brief Solve IK for a leg target and record it as that leg's joint command
  * @param[in] target The foot target position (leg frame)
  * @param[in] legNum The leg
+ * @param[in] dt The time since the last tick (s)
  * @note The body is leveled while walking and each foot raised or lowered by load balancing.
- *       Also records target as the leg's current position.
+ *       No joint moves faster than its speed limit (see jointSpeedScale): the gait slows to stay
+ *       inside them, and this catches whatever it couldn't, the foot then lagging its target.
+ *       Records where the foot was sent as the leg's current position.
 */
-void GaitEngine::commandFoot(const Vec3& target, int legNum) {
+void GaitEngine::commandFoot(const Vec3& target, int legNum, Scalar dt) {
     // ik doesn't promise to read the seed before writing the result, so they can't be one vector.
     // Out of reach gives the closest pose, as before; ik's flag is unused for now.
+    const LegKinematics& leg = kinematics(legNum);
+    const BodyPose pose = walkPose();
+    const Vec3 lift(0, 0, foot_height_offset[legNum]);
     const JointVec seed = output.joints[legNum];
-    kinematics(legNum).ik(trajectoryGen.posedFoot(legNum, target, walkPose())
-        + Vec3(0, 0, foot_height_offset[legNum]), seed, output.joints[legNum]);
-    current_leg_positions[legNum] = target;
+    JointVec& q = output.joints[legNum];
+    leg.ik(trajectoryGen.posedFoot(legNum, target, pose) + lift, seed, q);
+
+    bool limited = false;
+    const LegDefinition& def = robot.legs[legNum];
+    if (dt > 0 && seed.size() == q.size()) {
+        const int joints = std::min<int>(static_cast<int>(q.size()), def.numJoints);
+        for (int j = 0; j < joints; ++j) {
+            const Scalar maxStep = def.joints[j].velocityLimit(p.max_joint_speed) * dt;
+            const Scalar step = q(j) - seed(j);
+            if (std::abs(step) > maxStep) {
+                q(j) = seed(j) + std::copysign(maxStep, step);
+                limited = true;
+            }
+        }
+    }
+    if (limited) {
+        // Where the foot got to, back in the unposed frame the targets are planned in
+        const Vec3 reached = leg.fk(q) - lift;
+        current_leg_positions[legNum] = trajectoryGen.bodyToLeg(legNum,
+            trajectoryGen.unposedBodyPoint(trajectoryGen.legToBody(legNum, reached), pose));
+        emitThrottled(LOG_JOINT_SPEED_LIMITED, 5, LogLevel::Debug,
+            "Leg %d held to its joint speed limits: the foot lags its target", legNum + 1);
+    } else {
+        current_leg_positions[legNum] = target;
+    }
 }
 
 /**
@@ -144,7 +173,7 @@ void GaitEngine::sendFootTargets(const std::array<Vec3, kMaxLegs>& targets, Scal
         if (delta.norm() > maxStep) {
             targetPos = current_leg_positions[legNum] + delta.normalized() * maxStep;
         }
-        commandFoot(targetPos, legNum);
+        commandFoot(targetPos, legNum, dt);
     }
     output.commanded = true;
 
@@ -196,6 +225,10 @@ bool GaitEngine::startup(Scalar dt) {
         }
         current_leg_positions = measured_leg_positions;
         startup_start_positions = measured_leg_positions;
+        // The joints start where they are: the speed limit in commandFoot counts from here
+        for (int leg = 0; leg < numLegs(); ++leg) {
+            output.joints[leg] = measured_angles[leg];
+        }
         startup_progress = 0;
         startup_planned = true;
     }
@@ -219,7 +252,7 @@ bool GaitEngine::startup(Scalar dt) {
 
     const auto targets = targetsAt(startup_progress);
     for (int leg = 0; leg < numLegs(); ++leg) {
-        commandFoot(targets[leg], leg);
+        commandFoot(targets[leg], leg, dt);
     }
     output.commanded = true;
     // Where the feet were sent: standing up from the seated pose holds them here

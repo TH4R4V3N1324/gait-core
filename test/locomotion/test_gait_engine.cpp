@@ -448,9 +448,10 @@ TEST(GaitEngine, ExplorersGaitsAreAllStaticallyStable) {
 
 TEST(GaitEngine, AQuadrupedsTrotIsRefusedUnlessAllowed) {
     const GaitEngine strict{GaitParams{}, quadruped()};
+    const double stride = quadruped().maxStride;
     // Two diagonal feet: the centre of mass is on their line, and a stride takes it off. Swaying
     // can't help: two feet have no area to move over.
-    EXPECT_NEAR(strict.gaitStabilityMargin(0), -0.06, tol(1e-6)) << "trot";
+    EXPECT_NEAR(strict.gaitStabilityMargin(0), -stride, tol(1e-6)) << "trot";
     EXPECT_FALSE(strict.gaitSways(0));
     EXPECT_EQ(strict.unstableGait(), 0);
     EXPECT_FALSE(strict.robotSupported());
@@ -589,15 +590,16 @@ TEST(GaitEngine, AQuadrupedsCrawlSwaysToStayStable) {
     // Corners of the square at 0.12 + 0.177 / sqrt(2) from the centre: each crawl triangle is half
     // the square, whose largest circle has radius side * (2 - sqrt(2)) / 2. Less the stride.
     const double side = 2 * (0.12 + 0.177 / std::sqrt(2.0));
+    const double stride = quadruped().maxStride;
     const GaitEngine engine{GaitParams{}, quadruped()};
     EXPECT_TRUE(engine.gaitSways(1));
-    EXPECT_NEAR(engine.gaitStabilityMargin(1), side * (2 - std::sqrt(2.0)) / 2 - 0.06, tol(1e-6));
+    EXPECT_NEAR(engine.gaitStabilityMargin(1), side * (2 - std::sqrt(2.0)) / 2 - stride, tol(1e-6));
 
     GaitParams noSway;
     noSway.body_sway = false;
     const GaitEngine without{noSway, quadruped()};
     EXPECT_FALSE(without.gaitSways(1));
-    EXPECT_NEAR(without.gaitStabilityMargin(1), -0.06, tol(1e-6)) << "the centre is on the diagonal";
+    EXPECT_NEAR(without.gaitStabilityMargin(1), -stride, tol(1e-6)) << "the centre is on the diagonal";
 }
 
 TEST(GaitEngine, ExplorerNeverSways) {
@@ -746,4 +748,74 @@ TEST(GaitEngine, JointSpeedLimitsOverrideTheGlobalOne) {
     Robot globallySlow{slow, explorerWithJointLimit(-1, unset)};
     walkAndMeasureJointSpeeds(globallySlow, 3.0);
     EXPECT_LT(globallySlow.engine.odometry().x(), reference.engine.odometry().x() - 0.05);
+}
+
+TEST(GaitEngine, StandingUpPlantsEveryFoot) {
+    // Stepping back in to the standing reach used to stop as soon as every foot was within 1 mm of
+    // its start, leaving the last group hovering mid-swing for the first step to drop in one tick.
+    // Slow joints make the swings slow enough for one to end a tick inside that 1 mm, which left
+    // a foot about 0.96 mm up.
+    GaitParams slow;
+    slow.max_joint_speed = static_cast<Scalar>(0.5);
+    const gait_core::RobotDefinition definition = explorerWithJointLimit(-1, std::numeric_limits<double>::infinity());
+    Robot robot{slow, definition};
+    robot.run(3.0);
+    robot.engine.sit(false);
+    // The moment it stands, before anything else can move the feet
+    for (int i = 0; i < 3000 && robot.engine.sitState() != SitState::STANDING; ++i) {
+        robot.run(0.01);
+    }
+    ASSERT_EQ(robot.engine.sitState(), SitState::STANDING);
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+        const gait_core::Vec3 foot = gait_core::YawPitchPitchLeg(definition.legs[leg]).fk(robot.feedback.angles[leg]);
+        // Within a fraction of a millimetre: joints this slow trail the height glide a little
+        EXPECT_NEAR(foot.z(), definition.standHeight, 2e-4) << "leg " << leg;
+    }
+}
+
+TEST(GaitEngine, NoJointEverExceedsItsSpeedLimit) {
+    // From power up, through standing, walking in every gait, reversing and stopping: the gait
+    // slows for the joints, and whatever it can't foresee (a landing target swinging round when the
+    // command reverses, say) the joint command itself is held to
+    const double femurLimit = 1.0;
+    const gait_core::RobotDefinition definition = explorerWithJointLimit(1, femurLimit);
+    for (uint8_t gait = 0; gait < gait_core::explorer::NUM_GAITS; ++gait) {
+        Robot robot{GaitParams{}, definition};
+        std::vector<std::string> failures;
+        auto last = robot.feedback.angles;
+        auto run = [&](double seconds) {
+            const int ticks = static_cast<int>(std::lround(seconds / 0.01));
+            for (int i = 0; i < ticks; ++i) {
+                robot.run(0.01);
+                for (int leg = 0; leg < NUM_LEGS; ++leg) {
+                    for (int j = 0; j < 3; ++j) {
+                        const double limit = definition.legs[leg].joints[j].max_velocity;
+                        const double step = std::abs(robot.feedback.angles[leg](j) - last[leg](j));
+                        const double speed = step / 0.01;
+                        // A float build's angles are only good to about tol()
+                        if (step > limit * 0.01 + tol(1e-9) && failures.size() < 5) {
+                            failures.push_back("leg " + std::to_string(leg) + " joint " + std::to_string(j) +
+                                ": " + std::to_string(speed) + " rad/s");
+                        }
+                    }
+                }
+                last = robot.feedback.angles;
+            }
+        };
+        run(3.0);
+        robot.engine.sit(false);
+        run(8.0);
+        robot.engine.setGait(gait);
+        run(3.0);
+        robot.engine.setVelocity({static_cast<Scalar>(0.25), 0, 0});
+        run(4.0);
+        robot.engine.setVelocity({static_cast<Scalar>(-0.25), 0, 0});
+        run(2.0);
+        robot.engine.setMode(gait_core::MODE_STRAFE);
+        robot.engine.setVelocity({static_cast<Scalar>(0.08), static_cast<Scalar>(0.06), static_cast<Scalar>(0.3)});
+        run(3.0);
+        robot.engine.setVelocity({0, 0, 0});
+        run(5.0);
+        EXPECT_TRUE(failures.empty()) << "gait " << int(gait) << ", first: " << (failures.empty() ? "" : failures[0]);
+    }
 }
