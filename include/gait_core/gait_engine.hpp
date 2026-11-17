@@ -4,9 +4,10 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 
 #include "gait_core/gait_config.hpp"
-#include "gait_core/hexapod_leg_3dof.hpp"
+#include "gait_core/yaw_pitch_pitch_leg.hpp"
 #include "gait_core/leg_odometry.hpp"
 #include "gait_core/robot_definition.hpp"
 #include "gait_core/trajectory_generator.hpp"
@@ -96,7 +97,7 @@ enum class SitState : uint8_t {
 
 /**
  * @brief Measured joint state of every leg
- * @note Each leg's vectors start as HexapodLeg3Dof::kNumJoints (3) zeros, which suits explorer. For
+ * @note Each leg's vectors start as YawPitchPitchLeg::kNumJoints (3) zeros, which suits explorer. For
  *       legs with another joint count, size them to that leg's LegDefinition::numJoints: a leg
  *       whose angles have a different number of entries is treated as not reported. (A default
  *       JointVec is empty, not zero, so they must never be left default-constructed.)
@@ -109,8 +110,8 @@ struct JointFeedback {
     std::array<JointVec, kMaxLegs> effort;           // N m the servos apply, same order as angles
 
     JointFeedback() {
-        angles.fill(JointVec::Zero(HexapodLeg3Dof::kNumJoints));
-        effort.fill(JointVec::Zero(HexapodLeg3Dof::kNumJoints));
+        angles.fill(JointVec::Zero(YawPitchPitchLeg::kNumJoints));
+        effort.fill(JointVec::Zero(YawPitchPitchLeg::kNumJoints));
     }
 };
 
@@ -141,7 +142,7 @@ struct GaitOutput {
     bool servoPower = false;                          // whether the servos should be powered (drive SERVO_EN from this)
 
     // Zeros, never empty; the engine resizes each leg to its kinematics' numJoints()
-    GaitOutput() { joints.fill(JointVec::Zero(HexapodLeg3Dof::kNumJoints)); }
+    GaitOutput() { joints.fill(JointVec::Zero(YawPitchPitchLeg::kNumJoints)); }
 };
 
 /**
@@ -183,8 +184,12 @@ public:
 */
 class GaitEngine {
 public:
-    explicit GaitEngine(const GaitParams& params = GaitParams{},
-                        const RobotDefinition& geometry = RobotDefinition::explorer());
+    /**
+     * @brief An engine for one robot
+     * @param[in] params The gait settings
+     * @param[in] geometry The robot: its legs, stance and gaits (e.g. gait_core::explorer::robot())
+    */
+    GaitEngine(const GaitParams& params, const RobotDefinition& geometry);
 
     // ---- Inputs -----------------------------------------------------------------------------
     /**
@@ -254,7 +259,7 @@ public:
     // If not, it never moves and keeps the servos off.
     bool robotSupported() const { return numLegs() > 0 && config.unrunnableGait() < 0; }
     // The solver each leg uses (unless setLegKinematics overrides it): its definition's, except
-    // that a leg asking for Hexapod3Dof whose chain isn't explorer's coxa/femur/tibia gets Chain
+    // that a leg asking for YawPitchPitch whose chain isn't that shape gets Chain
     LegSolver legSolver(int legNum) const { return leg_solver[legNum]; }
 
 private:
@@ -267,7 +272,7 @@ private:
     // leg's analytic solver or its chain, as leg_solver says, both built from its definition. The
     // built in ones are members rather than pointers to them, so copying or moving the engine
     // (cutServoPower does) can never leave a pointer into the old engine.
-    std::array<HexapodLeg3Dof, kMaxLegs> analytic;
+    std::array<std::optional<YawPitchPitchLeg>, kMaxLegs> analytic;   // set where leg_solver says so
     std::array<ChainKinematics, kMaxLegs> chains;
     std::array<LegSolver, kMaxLegs> leg_solver{};
     std::array<const LegKinematics*, kMaxLegs> legKinematics{};
@@ -275,8 +280,8 @@ private:
         if (legKinematics[legNum] != nullptr) {
             return *legKinematics[legNum];
         }
-        if (leg_solver[legNum] == LegSolver::Hexapod3Dof) {
-            return analytic[legNum];
+        if (leg_solver[legNum] == LegSolver::YawPitchPitch) {
+            return *analytic[legNum];
         }
         return chains[legNum];
     }

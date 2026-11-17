@@ -48,12 +48,12 @@ RobotDefinition withinCapacity(RobotDefinition robot) {
 }
 
 /**
- * @brief Whether HexapodLeg3Dof (built from this leg) gives exactly this leg's kinematics
+ * @brief Whether YawPitchPitchLeg (built from this leg) gives exactly this leg's kinematics
  * @param[in] leg The leg
- * @return true for explorer's shape, whatever the link lengths: a coxa about +z at the leg origin,
+ * @return true for a yaw joint then two pitch joints in a line, whatever the link lengths: a coxa about +z at the leg origin,
  *         then femur and tibia joints about +y spaced out along +x, and the foot out along +x
 */
-bool fitsHexapod3Dof(const LegDefinition& leg) {
+bool fitsYawPitchPitch(const LegDefinition& leg) {
     if (leg.numJoints != 3) {
         return false;
     }
@@ -97,9 +97,9 @@ GaitEngine::GaitEngine(const GaitParams& params, const RobotDefinition& geometry
         // Each leg's own solver: the analytic one only where it really is this leg's kinematics
         const LegDefinition& leg = robot.legs[legNum];
         chains[legNum] = ChainKinematics(leg);
-        if (leg.solver == LegSolver::Hexapod3Dof && fitsHexapod3Dof(leg)) {
-            analytic[legNum] = HexapodLeg3Dof(leg);
-            leg_solver[legNum] = LegSolver::Hexapod3Dof;
+        if (leg.solver == LegSolver::YawPitchPitch && fitsYawPitchPitch(leg)) {
+            analytic[legNum].emplace(leg);
+            leg_solver[legNum] = LegSolver::YawPitchPitch;
         } else {
             leg_solver[legNum] = LegSolver::Chain;
         }
@@ -112,7 +112,7 @@ GaitEngine::GaitEngine(const GaitParams& params, const RobotDefinition& geometry
  * @brief Use other kinematics for one leg, e.g. an analytic solver for a different leg design
  * @param[in] legNum The leg, 0..numLegs() - 1; others are ignored
  * @param[in] kinematics Not owned, and must outlive the engine; null goes back to the built in
- *            HexapodLeg3Dof. Ignored, with a warning, if its numJoints() is not 1..kMaxJointsPerLeg.
+ *            YawPitchPitchLeg. Ignored, with a warning, if its numJoints() is not 1..kMaxJointsPerLeg.
  * @note Resets that leg's joint command to zeros of the new size, so set it before standing up.
  *       Kept when servo power is cut.
 */

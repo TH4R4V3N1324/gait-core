@@ -1,6 +1,6 @@
-#include "gait_core/hexapod_leg_3dof.hpp"
+#include "gait_core/yaw_pitch_pitch_leg.hpp"
 
-static_assert(gait_core::kMaxJointsPerLeg >= 3, "HexapodLeg3Dof needs GAIT_CORE_MAX_JOINTS >= 3");
+static_assert(gait_core::kMaxJointsPerLeg >= 3, "YawPitchPitchLeg needs GAIT_CORE_MAX_JOINTS >= 3");
 
 namespace gait_core {
 
@@ -23,7 +23,7 @@ JointVec toJointVec(const JointAngles& a) {
  * @param[in] jointAngles coxa, femur, tibia (rad)
  * @return The foot position (leg frame, m)
 */
-Vec3 HexapodLeg3Dof::fk(const JointVec& jointAngles) const {
+Vec3 YawPitchPitchLeg::fk(const JointVec& jointAngles) const {
     return solver.solveFK(toJointAngles(jointAngles));
 }
 
@@ -35,7 +35,7 @@ Vec3 HexapodLeg3Dof::fk(const JointVec& jointAngles) const {
  * @return false if either acos argument had to be clamped (target out of reach); jointAngles
  *         then holds the clamped solution, as solveIK always has
 */
-bool HexapodLeg3Dof::ik(const Vec3& target, const JointVec& /*seed*/, JointVec& jointAngles) const {
+bool YawPitchPitchLeg::ik(const Vec3& target, const JointVec& /*seed*/, JointVec& jointAngles) const {
     bool clamped = false;
     jointAngles = toJointVec(solver.solveIK(target, false, &clamped));
     return !clamped;
@@ -46,7 +46,7 @@ bool HexapodLeg3Dof::ik(const Vec3& target, const JointVec& /*seed*/, JointVec& 
  * @param[in] jointAngles coxa, femur, tibia (rad)
  * @return 3x3 d(foot position) / d(coxa, femur, tibia)
 */
-LegJacobian HexapodLeg3Dof::jacobian(const JointVec& jointAngles) const {
+LegJacobian YawPitchPitchLeg::jacobian(const JointVec& jointAngles) const {
     return solver.jacobian(toJointAngles(jointAngles));
 }
 

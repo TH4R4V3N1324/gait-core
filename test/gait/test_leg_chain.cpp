@@ -13,7 +13,7 @@ using gait_core::JointVec;
 using gait_core::KinematicSolver;
 using gait_core::LegDefinition;
 using gait_core::Mat3;
-using gait_core::NUM_LEGS;
+using gait_core::explorer::NUM_LEGS;
 using gait_core::RobotDefinition;
 using gait_core::Scalar;
 using Vector3d = gait_core::Vec3;
@@ -49,7 +49,7 @@ JointVec angles(double coxa, double femur, double tibia) {
 }  // namespace
 
 TEST(LegChain, ExplorerLegsAreCoxaFemurTibia) {
-    const RobotDefinition robot = RobotDefinition::explorer();
+    const RobotDefinition robot = explorerRobot();
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
         const LegDefinition& def = robot.legs[leg];
         ASSERT_EQ(def.numJoints, 3) << "leg " << leg;
@@ -62,12 +62,12 @@ TEST(LegChain, ExplorerLegsAreCoxaFemurTibia) {
 
 TEST(LegChain, StraightLegReachesTheSumOfTheLinks) {
     // All zeros: coxa, femur and tibia in a line straight out along +x
-    const LegDefinition& leg = RobotDefinition::explorer().legs[0];
+    const LegDefinition& leg = explorerRobot().legs[0];
     EXPECT_NEAR((chainFoot(leg, angles(0, 0, 0)) - Vector3d(0.349, 0, 0)).norm(), 0.0, tol(1e-12));
 }
 
 TEST(LegChain, HandWorkedPoses) {
-    const LegDefinition& leg = RobotDefinition::explorer().legs[0];
+    const LegDefinition& leg = explorerRobot().legs[0];
     constexpr double half = M_PI / 2;
     // Coxa turned 90 degrees: the straight leg points along +y
     EXPECT_NEAR((chainFoot(leg, angles(half, 0, 0)) - Vector3d(0, 0.349, 0)).norm(), 0.0, tol(1e-9));
@@ -79,7 +79,7 @@ TEST(LegChain, HandWorkedPoses) {
 
 TEST(LegChain, MatchesKinematicSolverAcrossTheJointRanges) {
     // Every leg, on a grid covering each joint's whole range
-    const RobotDefinition robot = RobotDefinition::explorer();
+    const RobotDefinition robot = explorerRobot();
     const KinematicSolver solver(robot.legs[0]);  // every explorer leg has the same chain
     constexpr int STEPS = 12;
     double worst = 0;
@@ -105,7 +105,7 @@ TEST(LegChain, MatchesKinematicSolverAcrossTheJointRanges) {
 
 TEST(LegChain, ExplorerMatchesTheUrdf) {
     // Link lengths and joint ranges as in hexapod-ros2's URDF
-    const LegDefinition& leg = RobotDefinition::explorer().legs[0];
+    const LegDefinition& leg = explorerRobot().legs[0];
     EXPECT_EQ(leg.joints[1].origin, Vector3d(static_cast<Scalar>(0.063), 0, 0));   // coxa link
     EXPECT_EQ(leg.joints[2].origin, Vector3d(static_cast<Scalar>(0.100), 0, 0));   // femur
     EXPECT_EQ(leg.foot, Vector3d(static_cast<Scalar>(0.186), 0, 0));               // tibia
@@ -118,7 +118,7 @@ TEST(LegChain, ExplorerMatchesTheUrdf) {
 
 TEST(LegChain, TheAnalyticSolverTakesItsLengthsFromTheLeg) {
     // A longer femur: the solver built from this leg must use it, not explorer's
-    LegDefinition leg = RobotDefinition::explorer().legs[0];
+    LegDefinition leg = explorerRobot().legs[0];
     leg.joints[2].origin.x() = static_cast<Scalar>(0.12);
     const KinematicSolver solver(leg);
     EXPECT_NEAR((solver.solveFK(JointAngles{0, 0, 0}) - Vector3d(static_cast<Scalar>(0.369), 0, 0)).norm(), 0.0, tol(1e-9));

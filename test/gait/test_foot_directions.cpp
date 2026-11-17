@@ -5,7 +5,7 @@
 #include "test_common.hpp"
 #include "gait_core/trajectory_generator.hpp"
 
-using gait_core::NUM_LEGS;
+using gait_core::explorer::NUM_LEGS;
 using gait_core::TrajectoryGenerator;
 using Vector3d = gait_core::Vec3;
 
@@ -35,7 +35,7 @@ static double angleDiff(double a, double b) {
 }
 
 TEST(FootDirections, LegFramesMatchUrdf) {
-    TrajectoryGenerator gen;
+    TrajectoryGenerator gen{explorerRobot()};
     // Coxa joint yaws from hexapod_primitives.urdf.xacro
     const double urdf_yaw[NUM_LEGS] = {-M_PI / 4, -M_PI / 2, -3 * M_PI / 4, 3 * M_PI / 4, M_PI / 2, M_PI / 4};
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
@@ -44,7 +44,7 @@ TEST(FootDirections, LegFramesMatchUrdf) {
 }
 
 TEST(FootDirections, NeutralFeetPointAwayFromBody) {
-    TrajectoryGenerator gen;
+    TrajectoryGenerator gen{explorerRobot()};
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d foot = gen.neutralFootInBody(leg);
         EXPECT_GT(foot.norm(), 0.25) << "leg " << leg;
@@ -53,7 +53,7 @@ TEST(FootDirections, NeutralFeetPointAwayFromBody) {
 }
 
 TEST(FootDirections, ForwardMovesEveryFootForward) {
-    TrajectoryGenerator gen;
+    TrajectoryGenerator gen{explorerRobot()};
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d body = toBody(gen, leg, gen.footDisplacement(0.1, 0.0, 0.0, leg, 1.0));
         EXPECT_NEAR((body - 0.1 * FORWARD).norm(), 0.0, tol(1e-9)) << "leg " << leg;
@@ -61,7 +61,7 @@ TEST(FootDirections, ForwardMovesEveryFootForward) {
 }
 
 TEST(FootDirections, PositiveLeftMovesEveryFootLeft) {
-    TrajectoryGenerator gen;
+    TrajectoryGenerator gen{explorerRobot()};
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
         Vector3d body = toBody(gen, leg, gen.footDisplacement(0.0, 0.1, 0.0, leg, 1.0));
         EXPECT_NEAR((body - 0.1 * LEFT).norm(), 0.0, tol(1e-9)) << "leg " << leg;
@@ -69,22 +69,22 @@ TEST(FootDirections, PositiveLeftMovesEveryFootLeft) {
 }
 
 TEST(FootDirections, LegsAreOnTheRightSides) {
-    TrajectoryGenerator gen;
+    TrajectoryGenerator gen{explorerRobot()};
     // The right legs are at -y, the left at +y
-    for (int leg : {gait_core::LEG_FRONT_RIGHT, gait_core::LEG_MIDDLE_RIGHT, gait_core::LEG_REAR_RIGHT}) {
+    for (int leg : {gait_core::explorer::LEG_FRONT_RIGHT, gait_core::explorer::LEG_MIDDLE_RIGHT, gait_core::explorer::LEG_REAR_RIGHT}) {
         EXPECT_LT(gen.neutralFootInBody(leg).y(), 0.0) << "leg " << leg;
     }
-    for (int leg : {gait_core::LEG_REAR_LEFT, gait_core::LEG_MIDDLE_LEFT, gait_core::LEG_FRONT_LEFT}) {
+    for (int leg : {gait_core::explorer::LEG_REAR_LEFT, gait_core::explorer::LEG_MIDDLE_LEFT, gait_core::explorer::LEG_FRONT_LEFT}) {
         EXPECT_GT(gen.neutralFootInBody(leg).y(), 0.0) << "leg " << leg;
     }
-    EXPECT_GT(gen.neutralFootInBody(gait_core::LEG_FRONT_RIGHT).x(), 0.0);
-    EXPECT_GT(gen.neutralFootInBody(gait_core::LEG_FRONT_LEFT).x(), 0.0);
-    EXPECT_LT(gen.neutralFootInBody(gait_core::LEG_REAR_RIGHT).x(), 0.0);
-    EXPECT_LT(gen.neutralFootInBody(gait_core::LEG_REAR_LEFT).x(), 0.0);
+    EXPECT_GT(gen.neutralFootInBody(gait_core::explorer::LEG_FRONT_RIGHT).x(), 0.0);
+    EXPECT_GT(gen.neutralFootInBody(gait_core::explorer::LEG_FRONT_LEFT).x(), 0.0);
+    EXPECT_LT(gen.neutralFootInBody(gait_core::explorer::LEG_REAR_RIGHT).x(), 0.0);
+    EXPECT_LT(gen.neutralFootInBody(gait_core::explorer::LEG_REAR_LEFT).x(), 0.0);
 }
 
 TEST(FootDirections, PositiveYawIsAnticlockwiseAboutBodyCentre) {
-    TrajectoryGenerator gen;
+    TrajectoryGenerator gen{explorerRobot()};
     const double yaw = 0.5;       // rad/s
     const double duration = 0.01; // s, short so the arc is close to a straight line
     for (int leg = 0; leg < NUM_LEGS; ++leg) {

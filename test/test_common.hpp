@@ -4,7 +4,17 @@
 #include <algorithm>
 #include <type_traits>
 
+#include "gait_core/robot_definition.hpp"
 #include "gait_core/types.hpp"
+#include "gait_core_robots/explorer.hpp"
+
+/**
+ * @brief Explorer, the robot most tests run (the gait core has none built in)
+ * @note Only usable from tests linked against gait_core::robots.
+*/
+inline gait_core::RobotDefinition explorerRobot() {
+    return gait_core::explorer::robot();
+}
 
 /**
  * @brief Tolerance for a check written for double precision

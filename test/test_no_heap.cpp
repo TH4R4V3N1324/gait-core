@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include "test_common.hpp"
+
 #include <atomic>
 #include <cstdlib>
 #include <new>
@@ -40,10 +42,10 @@ using gait_core::GaitEngine;
 using gait_core::GaitOutput;
 using gait_core::ImuSample;
 using gait_core::JointFeedback;
-using gait_core::HexapodLeg3Dof;
+using gait_core::YawPitchPitchLeg;
 using gait_core::JointVec;
 using gait_core::LogLevel;
-using gait_core::NUM_LEGS;
+using gait_core::explorer::NUM_LEGS;
 using gait_core::Scalar;
 using gait_core::Timestamp;
 using gait_core::Vec3;
@@ -57,8 +59,8 @@ int logged = 0;
 */
 class Robot {
 public:
-    GaitEngine engine;
-    HexapodLeg3Dof ik;
+    GaitEngine engine{gait_core::GaitParams{}, explorerRobot()};
+    YawPitchPitchLeg ik{explorerRobot().legs[0]};
     Timestamp now = 1'000'000'000;
     JointFeedback feedback;
     bool imu = false;
@@ -136,13 +138,13 @@ TEST(NoHeap, RunningTheGaitNeverAllocates) {
 
     robot.engine.setVelocity({static_cast<Scalar>(0.1), 0, 0});
     robot.run(3.0);
-    robot.engine.setGait(gait_core::GAIT_RIPPLE);
+    robot.engine.setGait(gait_core::explorer::GAIT_RIPPLE);
     robot.run(3.0);
-    robot.engine.setGait(gait_core::GAIT_WAVE);
+    robot.engine.setGait(gait_core::explorer::GAIT_WAVE);
     robot.engine.setMode(gait_core::MODE_STRAFE);
     robot.engine.setVelocity({static_cast<Scalar>(0.05), static_cast<Scalar>(0.05), static_cast<Scalar>(0.2)});
     robot.run(4.0);
-    robot.engine.setGait(gait_core::GAIT_TRIPOD);
+    robot.engine.setGait(gait_core::explorer::GAIT_TRIPOD);
     robot.engine.setVelocity({0, 0, 0});
     robot.run(3.5);   // idle return, load balancing
     robot.imu = true;
@@ -200,7 +202,7 @@ TEST(NoHeap, TheBatteryMonitorNeverAllocates) {
 
 TEST(NoHeap, ChainKinematicsNeverAllocates) {
     // Numerical IK on every tick of a leg with no analytic solver must stay off the heap too
-    const gait_core::ChainKinematics chain(gait_core::RobotDefinition::explorer().legs[0]);
+    const gait_core::ChainKinematics chain(explorerRobot().legs[0]);
     JointVec q = JointVec::Zero(3);
     q << Scalar(0.1), Scalar(-0.5), Scalar(1.5);
     const long before = allocations.load();

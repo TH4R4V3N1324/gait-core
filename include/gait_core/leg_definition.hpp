@@ -18,7 +18,7 @@ struct LegConfig {
 
 enum class LegSolver : uint8_t {
     Chain,          // a generic chain of revolute joints (ChainKinematics): works for any leg
-    Hexapod3Dof,    // the analytic coxa/femur/tibia solver (HexapodLeg3Dof), for explorer
+    YawPitchPitch,  // the analytic solver (YawPitchPitchLeg) for a yaw joint then two pitch joints, e.g. coxa/femur/tibia
 };
 
 struct LegDefinition {

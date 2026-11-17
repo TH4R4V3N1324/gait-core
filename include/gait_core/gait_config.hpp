@@ -11,11 +11,6 @@
 
 namespace gait_core {
 
-static constexpr int MAX_RESOLUTION = 50;
-// Explorer defaults; the stride actually used comes from RobotDefinition::maxStride
-static constexpr Scalar MAX_STRIDE_LENGTH = static_cast<Scalar>(0.06);  // m
-static constexpr Scalar LIFT_HEIGHT = static_cast<Scalar>(0.05);        // m
-
 struct LocomotionOption {
     const char* name;
     uint8_t id;
@@ -53,7 +48,7 @@ public:
      * @brief Set up the neutral stance and the gaits from the robot
      * @param[in] geometry The robot whose stance and gaits to use
     */
-    explicit GaitConfig(const RobotDefinition& geometry = RobotDefinition::explorer());
+    explicit GaitConfig(const RobotDefinition& geometry);
 
     /**
      * @brief Get the robot's gaits

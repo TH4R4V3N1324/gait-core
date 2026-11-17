@@ -1,8 +1,8 @@
-#include "gait_core/robot_definition.hpp"
+#include "gait_core_robots/explorer.hpp"
 
-namespace gait_core {
+namespace gait_core::explorer {
 
-static_assert(kMaxLegs >= NUM_LEGS, "explorer() has 6 legs: GAIT_CORE_MAX_LEGS must be at least 6");
+static_assert(kMaxLegs >= NUM_LEGS, "explorer has 6 legs: GAIT_CORE_MAX_LEGS must be at least 6");
 
 namespace {
 
@@ -30,7 +30,7 @@ Vec3 v(double x, double y, double z) {
 
 }  // namespace
 
-RobotDefinition RobotDefinition::explorer() {
+RobotDefinition robot() {
     RobotDefinition g{};
     g.numLegs = NUM_LEGS;
 
@@ -49,7 +49,7 @@ RobotDefinition RobotDefinition::explorer() {
 
     auto leg = [&](Scalar yaw, const Vec3& coxaPosition) {
         LegDefinition def{{yaw, coxaPosition}, 3, {coxa, femur, tibia}, foot_offset};
-        def.solver = LegSolver::Hexapod3Dof;  // the analytic solver matches the URDF
+        def.solver = LegSolver::YawPitchPitch;  // coxa about z, femur and tibia about y: exact and fast
         return def;
     };
 
@@ -88,4 +88,4 @@ RobotDefinition RobotDefinition::explorer() {
     return g;
 }
 
-}  // namespace gait_core
+}  // namespace gait_core::explorer

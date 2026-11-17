@@ -20,7 +20,7 @@ set(GAIT_TESTS
   gait/test_foot_force
   gait/test_gait_engine
   gait/test_gait_schedule
-  gait/test_hexapod_leg_3dof
+  gait/test_yaw_pitch_pitch_leg
   gait/test_kinematics
   gait/test_leg_chain
   gait/test_leg_clearance
@@ -39,8 +39,9 @@ function(gait_core_add_test path library)
   gtest_discover_tests(${name} DISCOVERY_TIMEOUT 30)
 endfunction()
 
+# The gait tests run explorer (gait_core::robots), the core having no robot of its own
 foreach(path ${GAIT_TESTS})
-  gait_core_add_test(${path} gait_core)
+  gait_core_add_test(${path} gait_core_robots)
 endforeach()
 foreach(path ${BEHAVIOUR_TESTS})
   gait_core_add_test(${path} gait_core_behaviour)
@@ -48,13 +49,14 @@ endforeach()
 
 # Runs the gait and the behaviours together, counting every heap allocation
 gait_core_add_test(test_no_heap gait_core_behaviour)
+target_link_libraries(test_no_heap PRIVATE gait_core_robots)
 
 # Protocol: sizes and values from C++, plus a C translation unit, since controllers include it from
-# C. Linked against gait_core too, to check Gait and Mode against the engine's values.
+# C. Linked against gait_core and explorer too, to check Gait and Mode against the engine's values.
 enable_language(C)
 gait_core_add_test(protocol/test_packets gait_core)
 target_sources(test_packets PRIVATE protocol/packets_c.c)
-target_link_libraries(test_packets PRIVATE gait_core_protocol)
+target_link_libraries(test_packets PRIVATE gait_core_protocol gait_core_robots)
 
 gait_core_add_test(teleop/test_gamepad_teleop gait_core_teleop)
 target_link_libraries(test_gamepad_teleop PRIVATE gait_core_protocol)

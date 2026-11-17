@@ -44,7 +44,7 @@ private:
     GaitConfig gaitConfig;
     FrameConverter converter;
 public:
-    explicit TrajectoryGenerator(const RobotDefinition& geometry = RobotDefinition::explorer())
+    explicit TrajectoryGenerator(const RobotDefinition& geometry)
         : gaitConfig(geometry), converter(geometry) {}
 
     GaitState gaitState;

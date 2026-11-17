@@ -8,7 +8,7 @@ using gait_core::KinematicSolver;
 using Vector3d = gait_core::Vec3;
 
 TEST(FootForce, RecoversAForceFromTheTorquesItCauses) {
-    KinematicSolver solver;
+    KinematicSolver solver{explorerRobot().legs[0]};
     JointAngles angles = solver.solveIK(Vector3d(0.15, 0.02, -0.12));
     const Vector3d force(3.0, -1.0, 7.5);  // N, ground on foot
     const Vector3d torques = -solver.jacobian(angles).transpose() * force;
@@ -18,7 +18,7 @@ TEST(FootForce, RecoversAForceFromTheTorquesItCauses) {
 }
 
 TEST(FootForce, JacobianMatchesAFiniteStep) {
-    KinematicSolver solver;
+    KinematicSolver solver{explorerRobot().legs[0]};
     JointAngles angles{0.2, -0.3, 0.4};
     const Vector3d step(0.001, -0.002, 0.0015);
     JointAngles moved{angles.coxa + step.x(), angles.femur + step.y(), angles.tibia + step.z()};
@@ -27,7 +27,7 @@ TEST(FootForce, JacobianMatchesAFiniteStep) {
 }
 
 TEST(FootForce, StraightLegIsRejected) {
-    KinematicSolver solver;
+    KinematicSolver solver{explorerRobot().legs[0]};
     // Femur and tibia in line: no vertical force can be found from the torques
     JointAngles straight{0.0, 0.0, 0.0};
     Vector3d force;

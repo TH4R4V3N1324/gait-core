@@ -11,7 +11,7 @@ namespace gait_core {
  * @brief Kinematics for any chain of revolute joints, from its LegDefinition
  * @note FK and the Jacobian are exact. IK is numerical (damped least squares from the seed),
  *       so it finds the solution nearest the seed and takes a bounded number of iterations.
- *       Use an analytic LegKinematics where there is one (HexapodLeg3Dof for explorer).
+ *       Use an analytic LegKinematics where there is one (YawPitchPitchLeg for explorer).
 */
 class ChainKinematics : public LegKinematics {
 public:

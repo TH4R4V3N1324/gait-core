@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include "test_common.hpp"
+
 #include <cstddef>
 
 #include "gait_core/gait_config.hpp"
@@ -17,10 +19,10 @@ int hexapod_c_feature_count(void);
 }
 
 // The robot passes Gait and Mode values straight to the engine
-static_assert(static_cast<int>(::GAIT_TRIPOD) == gait_core::GAIT_TRIPOD, "");
-static_assert(static_cast<int>(::GAIT_RIPPLE) == gait_core::GAIT_RIPPLE, "");
-static_assert(static_cast<int>(::GAIT_WAVE) == gait_core::GAIT_WAVE, "");
-static_assert(static_cast<int>(::NUM_GAITS) == gait_core::NUM_GAITS, "");
+static_assert(static_cast<int>(::GAIT_TRIPOD) == gait_core::explorer::GAIT_TRIPOD, "");
+static_assert(static_cast<int>(::GAIT_RIPPLE) == gait_core::explorer::GAIT_RIPPLE, "");
+static_assert(static_cast<int>(::GAIT_WAVE) == gait_core::explorer::GAIT_WAVE, "");
+static_assert(static_cast<int>(::NUM_GAITS) == gait_core::explorer::NUM_GAITS, "");
 static_assert(static_cast<int>(::MODE_NORMAL) == gait_core::MODE_NORMAL, "");
 static_assert(static_cast<int>(::MODE_STRAFE) == gait_core::MODE_STRAFE, "");
 static_assert(static_cast<int>(::MODE_TILT) == gait_core::MODE_TILT, "");
@@ -82,7 +84,7 @@ TEST(Packets, Version4CarriesAnyRobotsLegsAndGaits) {
     EXPECT_EQ(offsetof(HexPacket, flags), 17u);
     EXPECT_EQ(offsetof(HexPacket, numGaits), 18u);
     // Explorer's gait ids are still the protocol's names
-    EXPECT_EQ(gait_core::RobotDefinition::explorer().numGaits, static_cast<int>(NUM_GAITS));
+    EXPECT_EQ(explorerRobot().numGaits, static_cast<int>(NUM_GAITS));
 }
 
 // A robot's calibration offsets must fit, whatever joint count gait core is built for

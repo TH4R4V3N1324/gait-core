@@ -53,10 +53,9 @@ add_library(gait_core STATIC
   src/gait/gait_config.cpp
   src/gait/gait_pattern.cpp
   src/gait/gait_engine.cpp
-  src/gait/hexapod_leg_3dof.cpp
+  src/gait/yaw_pitch_pitch_leg.cpp
   src/gait/kinematic_solver.cpp
   src/gait/leg_odometry.cpp
-  src/gait/robot_definition.cpp
   src/gait/trajectory_generator.cpp
   src/gait/chain_kinematics.cpp
 )
@@ -109,6 +108,20 @@ if(NOT CMAKE_CROSSCOMPILING)
 endif()
 
 # ---------------------------------------------------------------------------
+# Robot definitions: real robots built on the gait core, which itself has none built in.
+# Exported as gait_core::robots (gait_core_robots/explorer.hpp: gait_core::explorer::robot()).
+# ---------------------------------------------------------------------------
+add_library(gait_core_robots STATIC
+  src/robots/explorer.cpp
+)
+add_library(gait_core::robots ALIAS gait_core_robots)
+set_target_properties(gait_core_robots PROPERTIES EXPORT_NAME robots)
+target_link_libraries(gait_core_robots PUBLIC gait_core)
+if(NOT CMAKE_CROSSCOMPILING)
+  set_target_properties(gait_core_robots PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
+# ---------------------------------------------------------------------------
 # Header-only, dependency-free libraries (no Eigen):
 #   gait_core::protocol  the controller <-> robot packets (hexapod_protocol/packets.h, also valid C)
 #   gait_core::teleop    the gamepad layout every stack shares (hexapod_teleop/gamepad_teleop.hpp)
@@ -131,7 +144,7 @@ target_include_directories(gait_core_teleop INTERFACE
 target_compile_features(gait_core_teleop INTERFACE cxx_std_17)
 
 if(GAIT_CORE_TOP_LEVEL)
-  foreach(target gait_core gait_core_behaviour)
+  foreach(target gait_core gait_core_behaviour gait_core_robots)
     if(MSVC)
       target_compile_options(${target} PRIVATE /W4)
     else()
@@ -147,7 +160,7 @@ if(GAIT_CORE_TOP_LEVEL)
   include(GNUInstallDirs)
   include(CMakePackageConfigHelpers)
 
-  set(GAIT_CORE_EXPORT_TARGETS gait_core gait_core_behaviour gait_core_protocol gait_core_teleop)
+  set(GAIT_CORE_EXPORT_TARGETS gait_core gait_core_behaviour gait_core_robots gait_core_protocol gait_core_teleop)
   if(TARGET gait_core_eigen)
     list(APPEND GAIT_CORE_EXPORT_TARGETS gait_core_eigen)
     install(DIRECTORY ${GAIT_CORE_EIGEN_DIR}/Eigen

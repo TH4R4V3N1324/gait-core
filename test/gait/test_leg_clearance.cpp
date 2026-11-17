@@ -11,7 +11,6 @@
 
 using gait_core::JointAngles;
 using gait_core::KinematicSolver;
-using gait_core::MAX_STRIDE_LENGTH;
 using gait_core::TrajectoryGenerator;
 using Vector3d = gait_core::Vec3;
 
@@ -63,14 +62,14 @@ static double segmentDistance(const Vector3d& p0, const Vector3d& p1, const Vect
 }
 
 TEST(LegClearance, ChainMatchesForwardKinematics) {
-    KinematicSolver solver;
+    KinematicSolver solver{explorerRobot().legs[0]};
     JointAngles angles{0.3, -0.4, 0.2};
     EXPECT_NEAR((legChain(angles)[3] - solver.solveFK(angles)).norm(), 0.0, tol(1e-9));
 }
 
 TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
-    TrajectoryGenerator gen;
-    KinematicSolver solver;
+    TrajectoryGenerator gen{explorerRobot()};
+    KinematicSolver solver{explorerRobot().legs[0]};
     const double radii[3] = {COXA_RADIUS, FEMUR_RADIUS, TIBIA_RADIUS};
 
     // Foot offsets across the stride circle, at heights from walking (standing and mid-swing) and
@@ -80,7 +79,7 @@ TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
     std::vector<Vector3d> offsets = {Vector3d::Zero()};
     for (int k = 0; k < 16; ++k) {
         double a = 2.0 * M_PI * k / 16.0;
-        double r = MAX_STRIDE_LENGTH + LEVELING_SHIFT;
+        double r = explorerRobot().maxStride + LEVELING_SHIFT;
         offsets.emplace_back(r * std::cos(a), r * std::sin(a), 0.0);
     }
     const std::vector<double> heights = {-0.10, -0.05, 0.0, 0.05, 0.10};
@@ -104,8 +103,8 @@ TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
 
     double worst = 1e9;
     for (auto [a, b] : std::vector<std::pair<int, int>>{
-            {gait_core::LEG_FRONT_RIGHT, gait_core::LEG_MIDDLE_RIGHT}, {gait_core::LEG_MIDDLE_RIGHT, gait_core::LEG_REAR_RIGHT},
-            {gait_core::LEG_REAR_LEFT, gait_core::LEG_MIDDLE_LEFT}, {gait_core::LEG_MIDDLE_LEFT, gait_core::LEG_FRONT_LEFT}}) {
+            {gait_core::explorer::LEG_FRONT_RIGHT, gait_core::explorer::LEG_MIDDLE_RIGHT}, {gait_core::explorer::LEG_MIDDLE_RIGHT, gait_core::explorer::LEG_REAR_RIGHT},
+            {gait_core::explorer::LEG_REAR_LEFT, gait_core::explorer::LEG_MIDDLE_LEFT}, {gait_core::explorer::LEG_MIDDLE_LEFT, gait_core::explorer::LEG_FRONT_LEFT}}) {
         for (const auto& offsetA : offsets) {
             for (double liftA : heights) {
                 auto legA = segmentsFor(a, offsetA, liftA);

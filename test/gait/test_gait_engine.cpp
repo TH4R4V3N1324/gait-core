@@ -14,7 +14,7 @@ using gait_core::GaitParams;
 using gait_core::ImuSample;
 using gait_core::JointFeedback;
 using gait_core::JointVec;
-using gait_core::NUM_LEGS;
+using gait_core::explorer::NUM_LEGS;
 using gait_core::Scalar;
 using gait_core::SitState;
 using gait_core::Timestamp;
@@ -31,14 +31,14 @@ constexpr Timestamp DT_NS = 10'000'000;
 */
 class Robot {
 public:
-    GaitEngine engine;
+    GaitEngine engine{gait_core::GaitParams{}, explorerRobot()};
     Timestamp now = 1'000'000'000;
     JointFeedback feedback;
     int commandedTicks = 0;
     bool estop = false;
     bool servoPower;   // what the engine last asked for
 
-    explicit Robot(const GaitParams& params = GaitParams{}) : engine(params), servoPower(params.power_on_startup) {
+    explicit Robot(const GaitParams& params = GaitParams{}) : engine(params, explorerRobot()), servoPower(params.power_on_startup) {
         // Legs laid out flat at their zeros
         for (int leg = 0; leg < NUM_LEGS; ++leg) {
             feedback.present[leg] = true;
@@ -78,9 +78,9 @@ public:
 }  // namespace
 
 TEST(GaitEngine, WaitsForEveryJointBeforeMoving) {
-    GaitEngine engine;
+    GaitEngine engine{gait_core::GaitParams{}, explorerRobot()};
     JointFeedback partial;
-    for (int leg = 0; leg < gait_core::LEG_FRONT_LEFT; ++leg) {  // the front left leg missing
+    for (int leg = 0; leg < gait_core::explorer::LEG_FRONT_LEFT; ++leg) {  // the front left leg missing
         partial.present[leg] = true;
     }
     engine.onJointStates(partial);
@@ -188,7 +188,7 @@ TEST(GaitEngine, PowerDownSitsThenTurnsTheServosOff) {
     robot.run(8.0);
     EXPECT_FALSE(robot.servoPower);
     EXPECT_TRUE(robot.engine.seated());
-    EXPECT_NEAR(gait_core::HexapodLeg3Dof().fk(robot.feedback.angles[0]).z(), -robot.engine.params().sit_height, 1e-3)
+    EXPECT_NEAR(gait_core::YawPitchPitchLeg(explorerRobot().legs[0]).fk(robot.feedback.angles[0]).z(), -robot.engine.params().sit_height, 1e-3)
         << "the servos went off with the robot seated";
 
     const int commanded = robot.commandedTicks;
@@ -288,7 +288,7 @@ public:
     }
     gait_core::LegJacobian jacobian(const JointVec& q) const override { return leg.jacobian(q); }
 private:
-    gait_core::HexapodLeg3Dof leg;
+    gait_core::YawPitchPitchLeg leg{explorerRobot().legs[0]};
 };
 
 }  // namespace
@@ -302,7 +302,7 @@ TEST(GaitEngine, JointVectorsStartSizedAndZeroNotEmpty) {
         EXPECT_EQ(feedback.effort[leg], JointVec::Zero(3)) << "leg " << leg;
         EXPECT_EQ(output.joints[leg], JointVec::Zero(3)) << "leg " << leg;
     }
-    GaitEngine engine;
+    GaitEngine engine{gait_core::GaitParams{}, explorerRobot()};
     const GaitOutput first = engine.update(DT, DT_NS);
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
         EXPECT_EQ(first.joints[leg], JointVec::Zero(3)) << "leg " << leg;
@@ -310,10 +310,10 @@ TEST(GaitEngine, JointVectorsStartSizedAndZeroNotEmpty) {
 }
 
 TEST(GaitEngine, WrongSizedAnglesCountAsMissing) {
-    GaitEngine engine;
+    GaitEngine engine{gait_core::GaitParams{}, explorerRobot()};
     JointFeedback feedback;
     feedback.present.fill(true);
-    feedback.angles[gait_core::LEG_REAR_LEFT] = JointVec::Zero(2);
+    feedback.angles[gait_core::explorer::LEG_REAR_LEFT] = JointVec::Zero(2);
     engine.onJointStates(feedback);
     for (int i = 0; i < 20; ++i) {
         EXPECT_FALSE(engine.update(DT, (i + 1) * DT_NS).commanded);
@@ -323,7 +323,7 @@ TEST(GaitEngine, WrongSizedAnglesCountAsMissing) {
 TEST(GaitEngine, PowerLossRebuildKeepsLegKinematicsAndJointSizes) {
     const CountingLeg counting;   // outlives the robot, as setLegKinematics requires
     Robot robot = standingRobot();
-    robot.engine.setLegKinematics(gait_core::LEG_FRONT_RIGHT, &counting);
+    robot.engine.setLegKinematics(gait_core::explorer::LEG_FRONT_RIGHT, &counting);
 
     // Sit and cut the servos: cutServoPower rebuilds the engine and moves it into place
     ASSERT_TRUE(robot.engine.powerDown().success);
@@ -347,7 +347,7 @@ TEST(GaitEngine, PowerLossRebuildKeepsLegKinematicsAndJointSizes) {
     }
 
     // Null goes back to the built in leg
-    robot.engine.setLegKinematics(gait_core::LEG_FRONT_RIGHT, nullptr);
+    robot.engine.setLegKinematics(gait_core::explorer::LEG_FRONT_RIGHT, nullptr);
     const int callsAfterReset = counting.calls;
     robot.run(0.5);
     EXPECT_EQ(counting.calls, callsAfterReset);

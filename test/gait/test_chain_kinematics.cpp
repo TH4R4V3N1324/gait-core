@@ -5,16 +5,16 @@
 
 #include "test_common.hpp"
 #include "gait_core/chain_kinematics.hpp"
-#include "gait_core/hexapod_leg_3dof.hpp"
+#include "gait_core/yaw_pitch_pitch_leg.hpp"
 #include "gait_core/robot_definition.hpp"
 
 using gait_core::ChainKinematics;
-using gait_core::HexapodLeg3Dof;
+using gait_core::YawPitchPitchLeg;
 using gait_core::JointDefinition;
 using gait_core::JointVec;
 using gait_core::LegDefinition;
 using gait_core::LegJacobian;
-using gait_core::NUM_LEGS;
+using gait_core::explorer::NUM_LEGS;
 using gait_core::RobotDefinition;
 using gait_core::Scalar;
 using Vector3d = gait_core::Vec3;
@@ -91,7 +91,7 @@ LegDefinition twoJointLeg() {
  * @brief Explorer's leg with a fourth joint: a 0.05 m foot link on an ankle about +y
 */
 LegDefinition fourJointLeg() {
-    LegDefinition leg = RobotDefinition::explorer().legs[0];
+    LegDefinition leg = explorerRobot().legs[0];
     leg.numJoints = 4;
     leg.joints[3] = revolute(leg.foot, v(0, 1, 0), -1.0, 1.0);
     leg.foot = v(0.05, 0, 0);
@@ -103,8 +103,8 @@ LegDefinition fourJointLeg() {
 // ---- Against the analytic solver -------------------------------------------------------------
 
 TEST(ChainKinematics, FkMatchesTheAnalyticLegOnEveryExplorerLeg) {
-    const RobotDefinition robot = RobotDefinition::explorer();
-    const HexapodLeg3Dof analytic(robot.legs[0]);  // every explorer leg has the same chain
+    const RobotDefinition robot = explorerRobot();
+    const YawPitchPitchLeg analytic(robot.legs[0]);  // every explorer leg has the same chain
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
         const ChainKinematics chain(robot.legs[leg]);
         ASSERT_EQ(chain.numJoints(), 3);
@@ -115,8 +115,8 @@ TEST(ChainKinematics, FkMatchesTheAnalyticLegOnEveryExplorerLeg) {
 }
 
 TEST(ChainKinematics, JacobianMatchesTheAnalyticLeg) {
-    const RobotDefinition robot = RobotDefinition::explorer();
-    const HexapodLeg3Dof analytic(robot.legs[0]);  // every explorer leg has the same chain
+    const RobotDefinition robot = explorerRobot();
+    const YawPitchPitchLeg analytic(robot.legs[0]);  // every explorer leg has the same chain
     const ChainKinematics chain(robot.legs[0]);
     forExplorerPoses([&](const JointVec& q) {
         ASSERT_NEAR((chain.jacobian(q) - analytic.jacobian(q)).norm(), 0.0, tol(1e-12)) << "at " << q.transpose();
@@ -124,15 +124,15 @@ TEST(ChainKinematics, JacobianMatchesTheAnalyticLeg) {
 }
 
 TEST(ChainKinematics, JacobianMatchesFiniteDifferences) {
-    const ChainKinematics chain(RobotDefinition::explorer().legs[0]);
+    const ChainKinematics chain(explorerRobot().legs[0]);
     forExplorerPoses([&](const JointVec& q) {
         ASSERT_NEAR((chain.jacobian(q) - finiteJacobian(chain, q)).norm(), 0.0, JACOBIAN_TOLERANCE) << "at " << q.transpose();
     });
 }
 
 TEST(ChainKinematics, GroundForceMatchesTheAnalyticLeg) {
-    const RobotDefinition robot = RobotDefinition::explorer();
-    const HexapodLeg3Dof analytic(robot.legs[0]);  // every explorer leg has the same chain
+    const RobotDefinition robot = explorerRobot();
+    const YawPitchPitchLeg analytic(robot.legs[0]);  // every explorer leg has the same chain
     const ChainKinematics chain(robot.legs[0]);
     const JointVec q = angles({0.2, -0.4, 1.6});
     const JointVec torques = angles({0.4, -0.9, 0.3});
@@ -147,7 +147,7 @@ TEST(ChainKinematics, GroundForceMatchesTheAnalyticLeg) {
 
 TEST(ChainKinematics, IkRoundTripsFromANearbySeed) {
     // The usual case in the gait: last tick's angles are close to this tick's answer
-    const ChainKinematics chain(RobotDefinition::explorer().legs[0]);
+    const ChainKinematics chain(explorerRobot().legs[0]);
     int solves = 0;
     int skipped = 0;
     forExplorerPoses([&](const JointVec& q) {
@@ -172,8 +172,8 @@ TEST(ChainKinematics, IkRoundTripsFromANearbySeed) {
 }
 
 TEST(ChainKinematics, IkAgreesWithTheAnalyticSolve) {
-    const RobotDefinition robot = RobotDefinition::explorer();
-    const HexapodLeg3Dof analytic(robot.legs[0]);  // every explorer leg has the same chain
+    const RobotDefinition robot = explorerRobot();
+    const YawPitchPitchLeg analytic(robot.legs[0]);  // every explorer leg has the same chain
     const ChainKinematics chain(robot.legs[0]);
     for (const Vector3d& foot : {v(0.17965, 0, -0.13353), v(0.24896, -0.05286, -0.07071), v(0.15, 0.08, -0.12)}) {
         JointVec expected;
@@ -189,7 +189,7 @@ TEST(ChainKinematics, IkAgreesWithTheAnalyticSolve) {
 }
 
 TEST(ChainKinematics, IkOutOfReachGivesTheClosestPoseWithinTheLimits) {
-    const LegDefinition leg = RobotDefinition::explorer().legs[0];
+    const LegDefinition leg = explorerRobot().legs[0];
     const ChainKinematics chain(leg);
     const Vector3d farAway = v(1.0, 0.0, -0.1);
     const JointVec seed = angles({0, -0.5, 1.5});
@@ -205,7 +205,7 @@ TEST(ChainKinematics, IkOutOfReachGivesTheClosestPoseWithinTheLimits) {
 }
 
 TEST(ChainKinematics, IkStartsFromZerosForASeedOfTheWrongSize) {
-    const ChainKinematics chain(RobotDefinition::explorer().legs[0]);
+    const ChainKinematics chain(explorerRobot().legs[0]);
     const Vector3d target = chain.fk(angles({0.3, -0.5, 1.4}));
     JointVec solved;
     EXPECT_TRUE(chain.ik(target, JointVec(), solved));
@@ -246,10 +246,10 @@ TEST(ChainKinematics, FourJointLeg) {
 }
 
 TEST(ChainKinematics, AxesNeedNotBeUnitLength) {
-    LegDefinition leg = RobotDefinition::explorer().legs[0];
+    LegDefinition leg = explorerRobot().legs[0];
     leg.joints[1].axis *= 3;   // same direction, so the same leg
     const ChainKinematics scaled(leg);
-    const ChainKinematics unit(RobotDefinition::explorer().legs[0]);
+    const ChainKinematics unit(explorerRobot().legs[0]);
     const JointVec q = angles({0.2, -0.4, 1.6});
     EXPECT_NEAR((scaled.fk(q) - unit.fk(q)).norm(), 0.0, tol(1e-12));
     EXPECT_NEAR((scaled.jacobian(q) - unit.jacobian(q)).norm(), 0.0, tol(1e-12));

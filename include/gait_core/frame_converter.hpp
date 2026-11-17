@@ -22,7 +22,7 @@ public:
      * @brief Initialise the mounting configuration of each leg
      * @param[in] geometry The robot whose legs to use
     */
-    explicit FrameConverter(const RobotDefinition& geometry = RobotDefinition::explorer()) {
+    explicit FrameConverter(const RobotDefinition& geometry) {
         for (int legNum = 0; legNum < kMaxLegs; ++legNum) {
             legConfigs[legNum] = geometry.legs[legNum].mount;
         }

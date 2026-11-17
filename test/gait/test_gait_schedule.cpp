@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "test_common.hpp"
+
 #include <cstring>
 
 #include "gait_core/gait_config.hpp"
@@ -10,8 +12,8 @@ using gait_core::GaitConfig;
 using gait_core::GaitPattern;
 using gait_core::GaitSchedule;
 using gait_core::kMaxGaits;
-using gait_core::NUM_GAITS;
-using gait_core::NUM_LEGS;
+using gait_core::explorer::NUM_GAITS;
+using gait_core::explorer::NUM_LEGS;
 using gait_core::RobotDefinition;
 using gait_core::Scalar;
 
@@ -51,27 +53,27 @@ void expectPhases(const GaitSchedule& schedule, size_t phases, std::initializer_
 
 TEST(GaitSchedule, ExplorersGaitsAreTheSameSchedulesAsBefore) {
     // Legs FR, MR, RR, RL, ML, FL; each number is the phase that leg swings in
-    const GaitConfig config;
+    const GaitConfig config{explorerRobot()};
     ASSERT_EQ(config.numGaits(), 3);
-    expectPhases(config.getGaitConfig(gait_core::GAIT_TRIPOD), 2, {0, 1, 0, 1, 0, 1});
-    expectPhases(config.getGaitConfig(gait_core::GAIT_RIPPLE), 3, {2, 1, 0, 1, 2, 0});
-    expectPhases(config.getGaitConfig(gait_core::GAIT_WAVE), 6, {2, 1, 0, 3, 4, 5});
+    expectPhases(config.getGaitConfig(gait_core::explorer::GAIT_TRIPOD), 2, {0, 1, 0, 1, 0, 1});
+    expectPhases(config.getGaitConfig(gait_core::explorer::GAIT_RIPPLE), 3, {2, 1, 0, 1, 2, 0});
+    expectPhases(config.getGaitConfig(gait_core::explorer::GAIT_WAVE), 6, {2, 1, 0, 3, 4, 5});
 }
 
 TEST(GaitSchedule, ExplorersGaitsAsDutyFactorsAndOffsets) {
-    const RobotDefinition robot = RobotDefinition::explorer();
-    const GaitPattern& tripod = robot.gaits[gait_core::GAIT_TRIPOD];
+    const RobotDefinition robot = explorerRobot();
+    const GaitPattern& tripod = robot.gaits[gait_core::explorer::GAIT_TRIPOD];
     EXPECT_STREQ(tripod.name, "tripod");
     EXPECT_EQ(tripod.numLegs, 6);
     EXPECT_NEAR(tripod.dutyFactor, 0.5, 1e-6);
-    EXPECT_NEAR(tripod.offset[gait_core::LEG_MIDDLE_RIGHT], 0.5, 1e-6);
-    EXPECT_NEAR(robot.gaits[gait_core::GAIT_RIPPLE].dutyFactor, 2.0 / 3, 1e-6);
-    EXPECT_NEAR(robot.gaits[gait_core::GAIT_WAVE].dutyFactor, 5.0 / 6, 1e-6);
-    EXPECT_NEAR(robot.gaits[gait_core::GAIT_WAVE].offset[gait_core::LEG_FRONT_LEFT], 5.0 / 6, 1e-6);
+    EXPECT_NEAR(tripod.offset[gait_core::explorer::LEG_MIDDLE_RIGHT], 0.5, 1e-6);
+    EXPECT_NEAR(robot.gaits[gait_core::explorer::GAIT_RIPPLE].dutyFactor, 2.0 / 3, 1e-6);
+    EXPECT_NEAR(robot.gaits[gait_core::explorer::GAIT_WAVE].dutyFactor, 5.0 / 6, 1e-6);
+    EXPECT_NEAR(robot.gaits[gait_core::explorer::GAIT_WAVE].offset[gait_core::explorer::LEG_FRONT_LEFT], 5.0 / 6, 1e-6);
 }
 
 TEST(GaitSchedule, EveryGaitSwingsEachLegExactlyOnce) {
-    const GaitConfig config;
+    const GaitConfig config{explorerRobot()};
     for (int g = 0; g < config.numGaits(); ++g) {
         const GaitSchedule schedule = config.getGaitConfig(static_cast<uint8_t>(g));
         ASSERT_FALSE(schedule.empty()) << "gait " << g;
@@ -93,7 +95,7 @@ TEST(GaitSchedule, EveryGaitSwingsEachLegExactlyOnce) {
 }
 
 TEST(GaitSchedule, ExplorersGaitsAreListedByName) {
-    const GaitConfig config;
+    const GaitConfig config{explorerRobot()};
     const char* names[] = {"tripod", "ripple", "wave"};
     size_t i = 0;
     for (const auto& gait : config.getGaits()) {
@@ -106,7 +108,7 @@ TEST(GaitSchedule, ExplorersGaitsAreListedByName) {
 }
 
 TEST(GaitSchedule, UnknownGaitIsEmpty) {
-    const GaitConfig config;
+    const GaitConfig config{explorerRobot()};
     EXPECT_TRUE(config.getGaitConfig(NUM_GAITS).empty());
     EXPECT_TRUE(config.getGaitConfig(255).empty());
 }
@@ -130,7 +132,7 @@ TEST(GaitSchedule, FromGroupsWorksForAnyLegCount) {
 TEST(GaitSchedule, PatternsTheEngineCantRunAreRejected) {
     GaitSchedule schedule;
     // Timed for six legs, on a quadruped
-    EXPECT_FALSE(RobotDefinition::explorer().gaits[0].schedule(4, schedule));
+    EXPECT_FALSE(explorerRobot().gaits[0].schedule(4, schedule));
     // A duty factor that isn't (n - 1) / n: swings that overlap phases
     EXPECT_FALSE(pattern("trot60", 0.6, {0, 0.4, 0, 0.4}).schedule(4, schedule));
     // An offset between phase boundaries
@@ -151,7 +153,7 @@ TEST(GaitSchedule, LongNamesAreTruncated) {
 }
 
 TEST(GaitSchedule, TheRobotsGaitsAreCycledInTurn) {
-    RobotDefinition robot = RobotDefinition::explorer();
+    RobotDefinition robot = explorerRobot();
     robot.numLegs = 4;
     robot.numGaits = 2;
     robot.gaits[0] = GaitPattern::fromGroups("trot", {{0, 2}, {1, 3}});

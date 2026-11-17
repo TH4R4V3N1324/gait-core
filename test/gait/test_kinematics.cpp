@@ -16,7 +16,7 @@ using Vector3d = gait_core::Vec3;
 static constexpr double DEG = M_PI / 180.0;
 
 TEST(Kinematics, IkMatchesTheCadStandPose) {
-    KinematicSolver solver;
+    KinematicSolver solver{explorerRobot().legs[0]};
     const Vector3d foot(0.17965, 0.0, -0.13353);
     const JointAngles angles = solver.solveIK(foot);
     EXPECT_NEAR(angles.coxa, 0.0, tol(1e-6));
@@ -27,7 +27,7 @@ TEST(Kinematics, IkMatchesTheCadStandPose) {
 
 TEST(Kinematics, IkMatchesTheCadWalkPose) {
     // A swinging leg: coxa turned 12 degrees, femur raised 45 degrees, foot lifted
-    KinematicSolver solver;
+    KinematicSolver solver{explorerRobot().legs[0]};
     const Vector3d foot(0.24896, -0.05286, -0.07071);
     const JointAngles angles = solver.solveIK(foot);
     EXPECT_NEAR(angles.coxa, -12.0 * DEG, 0.1 * DEG);

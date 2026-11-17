@@ -36,7 +36,7 @@ constexpr Timestamp DT_NS = 10'000'000;
  *       find plausible numbers rather than crash; the tests check results, not just survival.
 */
 RobotDefinition quadruped() {
-    RobotDefinition robot = RobotDefinition::explorer();
+    RobotDefinition robot = explorerRobot();
     robot.numLegs = 4;
     const Scalar c = static_cast<Scalar>(0.1);
     // Explorer's leg chains, on the corners of a square body
@@ -64,10 +64,10 @@ public:
 }  // namespace
 
 TEST(RobotDefinition, ExplorerHasSixLegs) {
-    EXPECT_EQ(RobotDefinition::explorer().numLegs, 6);
+    EXPECT_EQ(explorerRobot().numLegs, 6);
     EXPECT_EQ(RobotDefinition{}.numLegs, 0) << "a robot must say how many legs it has";
-    EXPECT_TRUE(GaitEngine().robotSupported());
-    EXPECT_EQ(GaitEngine().numLegs(), 6);
+    EXPECT_TRUE(GaitEngine(gait_core::GaitParams{}, explorerRobot()).robotSupported());
+    EXPECT_EQ(GaitEngine(gait_core::GaitParams{}, explorerRobot()).numLegs(), 6);
 }
 
 TEST(RobotDefinition, QuadrupedLegsMapToTheirMounts) {
@@ -137,11 +137,11 @@ TEST(RobotDefinition, LegKinematicsOnlyForLegsTheRobotHas) {
 }
 
 TEST(RobotDefinition, LegCountIsKeptWithinTheArrays) {
-    RobotDefinition tooMany = RobotDefinition::explorer();
+    RobotDefinition tooMany = explorerRobot();
     tooMany.numLegs = kMaxLegs + 3;
     EXPECT_EQ(GaitEngine(gait_core::GaitParams{}, tooMany).numLegs(), kMaxLegs);
 
-    RobotDefinition negative = RobotDefinition::explorer();
+    RobotDefinition negative = explorerRobot();
     negative.numLegs = -1;
     GaitEngine none(gait_core::GaitParams{}, negative);
     EXPECT_EQ(none.numLegs(), 0);
@@ -154,7 +154,7 @@ TEST(RobotDefinition, LegCountIsKeptWithinTheArrays) {
 namespace {
 
 RobotDefinition explorerOn(gait_core::LegSolver solver) {
-    RobotDefinition robot = RobotDefinition::explorer();
+    RobotDefinition robot = explorerRobot();
     for (int leg = 0; leg < robot.numLegs; ++leg) {
         robot.legs[leg].solver = solver;
     }
@@ -184,10 +184,10 @@ std::vector<GaitOutput> run(GaitEngine& engine, int ticks) {
 }  // namespace
 
 TEST(LegSolver, ExplorerUsesTheAnalyticSolver) {
-    const GaitEngine engine;
+    const GaitEngine engine{gait_core::GaitParams{}, explorerRobot()};
     for (int leg = 0; leg < engine.numLegs(); ++leg) {
-        EXPECT_EQ(RobotDefinition::explorer().legs[leg].solver, gait_core::LegSolver::Hexapod3Dof) << "leg " << leg;
-        EXPECT_EQ(engine.legSolver(leg), gait_core::LegSolver::Hexapod3Dof) << "leg " << leg;
+        EXPECT_EQ(explorerRobot().legs[leg].solver, gait_core::LegSolver::YawPitchPitch) << "leg " << leg;
+        EXPECT_EQ(engine.legSolver(leg), gait_core::LegSolver::YawPitchPitch) << "leg " << leg;
     }
 }
 
@@ -202,9 +202,9 @@ TEST(LegSolver, ALegDefinedWithoutOneUsesItsChain) {
 }
 
 TEST(LegSolver, TheAnalyticSolverOnlyWhereItFits) {
-    // HexapodLeg3Dof is a coxa about z then femur and tibia about y, all along x: any lengths, but
+    // YawPitchPitchLeg is a coxa about z then femur and tibia about y, all along x: any lengths, but
     // anything else asking for it gets its chain instead of the wrong maths
-    RobotDefinition robot = RobotDefinition::explorer();
+    RobotDefinition robot = explorerRobot();
     robot.legs[0].joints[2].origin.x() += static_cast<Scalar>(0.01);   // a longer femur: still fits
     robot.legs[1].joints[1].axis = Vector3d::UnitX();                  // femur about the wrong axis
     robot.legs[2].numJoints = 4;                                        // an extra joint
@@ -212,17 +212,17 @@ TEST(LegSolver, TheAnalyticSolverOnlyWhereItFits) {
     robot.legs[3].foot.z() = static_cast<Scalar>(-0.02);               // foot not straight out
     robot.legs[4].joints[1].origin.y() = static_cast<Scalar>(0.01);    // femur joint off to the side
     const GaitEngine engine(gait_core::GaitParams{}, robot);
-    EXPECT_EQ(engine.legSolver(0), gait_core::LegSolver::Hexapod3Dof);
+    EXPECT_EQ(engine.legSolver(0), gait_core::LegSolver::YawPitchPitch);
     for (int leg = 1; leg <= 4; ++leg) {
         EXPECT_EQ(engine.legSolver(leg), gait_core::LegSolver::Chain) << "leg " << leg;
     }
-    EXPECT_EQ(engine.legSolver(5), gait_core::LegSolver::Hexapod3Dof);
+    EXPECT_EQ(engine.legSolver(5), gait_core::LegSolver::YawPitchPitch);
 }
 
 TEST(LegSolver, ExplorerOnItsChainsStandsLikeTheAnalyticSolver) {
     // Startup and standing up, tick by tick: the numerical IK agrees with the analytic one to well
     // under a servo step (~1.5e-3 rad)
-    GaitEngine analytic;
+    GaitEngine analytic{gait_core::GaitParams{}, explorerRobot()};
     GaitEngine chain(gait_core::GaitParams{}, explorerOn(gait_core::LegSolver::Chain));
     const std::vector<GaitOutput> expected = run(analytic, 400);
     const std::vector<GaitOutput> actual = run(chain, 400);
@@ -265,12 +265,12 @@ RobotDefinition walkingQuadruped() {
 }  // namespace
 
 TEST(RobotGaits, AnUnknownGaitIsRefused) {
-    GaitEngine engine;
+    GaitEngine engine{gait_core::GaitParams{}, explorerRobot()};
     const gait_core::CommandResult result = engine.setGait(3);
     EXPECT_FALSE(result.success);
     EXPECT_NE(std::string(result.message).find("3 gaits"), std::string::npos) << result.message;
     EXPECT_FALSE(engine.gaitConfig().gaitChangeRequested);
-    EXPECT_TRUE(engine.setGait(gait_core::GAIT_WAVE).success);
+    EXPECT_TRUE(engine.setGait(gait_core::explorer::GAIT_WAVE).success);
 }
 
 TEST(RobotGaits, AQuadrupedWithItsOwnGaitsIsSupported) {
@@ -281,7 +281,7 @@ TEST(RobotGaits, AQuadrupedWithItsOwnGaitsIsSupported) {
 }
 
 TEST(RobotGaits, ARobotWithoutGaitsNeverMoves) {
-    RobotDefinition robot = RobotDefinition::explorer();
+    RobotDefinition robot = explorerRobot();
     robot.numGaits = 0;
     GaitEngine engine(gait_core::GaitParams{}, robot);
     EXPECT_FALSE(engine.robotSupported());
