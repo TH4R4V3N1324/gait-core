@@ -47,12 +47,33 @@ RobotDefinition withinCapacity(RobotDefinition robot) {
     return robot;
 }
 
+/**
+ * @brief Whether HexapodLeg3Dof (built from this leg) gives exactly this leg's kinematics
+ * @param[in] leg The leg
+ * @return true for explorer's shape, whatever the link lengths: a coxa about +z at the leg origin,
+ *         then femur and tibia joints about +y spaced out along +x, and the foot out along +x
+*/
+bool fitsHexapod3Dof(const LegDefinition& leg) {
+    if (leg.numJoints != 3) {
+        return false;
+    }
+    auto along = [](const Vec3& v, const Vec3& direction) {
+        return (v.normalized() - direction).norm() < S(1e-6);
+    };
+    auto outward = [](const Vec3& offset) {
+        return offset.y() == 0 && offset.z() == 0 && offset.x() > 0;
+    };
+    return along(leg.joints[0].axis, Vec3::UnitZ()) && leg.joints[0].origin.isZero() &&
+        along(leg.joints[1].axis, Vec3::UnitY()) && outward(leg.joints[1].origin) &&
+        along(leg.joints[2].axis, Vec3::UnitY()) && outward(leg.joints[2].origin) &&
+        outward(leg.foot);
+}
+
 }  // namespace
 
 GaitEngine::GaitEngine(const GaitParams& params, const RobotDefinition& geometry)
-    : p(params), robot_geometry(withinCapacity(geometry)), trajectoryGen(robot_geometry),
-      config(robot_geometry), limits(robot_geometry.limits), ikSolver(robot_geometry),
-      servo_power(params.power_on_startup) {
+    : p(params), robot(withinCapacity(geometry)), trajectoryGen(robot),
+      config(robot), servo_power(params.power_on_startup) {
     if (p.initial_mode >= NUM_MODES) {
         p.initial_mode = MODE_NORMAL;
     }
@@ -72,8 +93,17 @@ GaitEngine::GaitEngine(const GaitParams& params, const RobotDefinition& geometry
     tilt_saved_feet.fill(Vec3::Zero());
     previous_feet.fill(Vec2::Zero());
     foot_forces.fill(Vec3::Zero());
-    // A default JointVec is empty, not zero: size every leg's command to its joint count
     for (int legNum = 0; legNum < numLegs(); ++legNum) {
+        // Each leg's own solver: the analytic one only where it really is this leg's kinematics
+        const LegDefinition& leg = robot.legs[legNum];
+        chains[legNum] = ChainKinematics(leg);
+        if (leg.solver == LegSolver::Hexapod3Dof && fitsHexapod3Dof(leg)) {
+            analytic[legNum] = HexapodLeg3Dof(leg);
+            leg_solver[legNum] = LegSolver::Hexapod3Dof;
+        } else {
+            leg_solver[legNum] = LegSolver::Chain;
+        }
+        // A default JointVec is empty, not zero: size every leg's command to its joint count
         output.joints[legNum] = JointVec::Zero(kinematics(legNum).numJoints());
     }
 }
@@ -582,7 +612,7 @@ void GaitEngine::servoPowerLost() {
 */
 void GaitEngine::cutServoPower() {
     const bool wasSeated = seated();
-    GaitEngine fresh(p, robot_geometry);
+    GaitEngine fresh(p, robot);
     fresh.log = std::move(log);
     fresh.seatedChanged = std::move(seatedChanged);
     fresh.footholdPlanner = footholdPlanner;
@@ -1397,21 +1427,25 @@ void GaitEngine::updateLoadBalance(Scalar dt) {
  * @param[in] legNum The leg
  * @param[in] target The foot position (leg frame)
  * @return true if IK lands the foot within 1 mm of the target with every joint inside its limits
- * @note The limits are the coxa/femur/tibia ones from RobotDefinition, so a leg with any other
- *       number of joints is never reachable until limits are per leg.
+ * @note The limits are each joint's lower/upper in the leg's definition, so any number of joints
+ *       works. A leg given kinematics (setLegKinematics) with a different joint count than its
+ *       definition is never reachable, as there are no limits to check it against.
 */
 bool GaitEngine::reachable(int legNum, const Vec3& target) const {
     constexpr Scalar REACH_TOLERANCE = S(1e-3);  // m
-    const LegKinematics& leg = kinematics(legNum);
-    if (leg.numJoints() != HexapodLeg3Dof::kNumJoints) {
-        return false;
+    const LegKinematics& leg = kinematics(legNum);              // the solver
+    const LegDefinition& definition = robot.legs[legNum];  // its joints and their limits
+    if (leg.numJoints() != definition.numJoints) {
+        return false;  // an override with a different chain: no limits to judge it by
     }
     JointVec angles;
     leg.ik(target, output.joints[legNum], angles);  // the result is judged below, not by ik's flag
-    return std::abs(angles(0)) <= limits.coxaMax &&
-        angles(1) >= limits.femurMin && angles(1) <= limits.femurMax &&
-        angles(2) >= limits.tibiaMin && angles(2) <= limits.tibiaMax &&
-        (leg.fk(angles) - target).norm() <= REACH_TOLERANCE;
+    for (int j = 0; j < leg.numJoints(); ++j) {
+        if (angles(j) < definition.joints[j].lower || angles(j) > definition.joints[j].upper) {
+            return false;
+        }
+    }
+    return (leg.fk(angles) - target).norm() <= REACH_TOLERANCE;
 }
 
 /**

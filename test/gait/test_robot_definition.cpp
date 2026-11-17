@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 #include "test_common.hpp"
 #include "gait_core/gait_config.hpp"
@@ -146,4 +147,102 @@ TEST(RobotDefinition, LegCountIsKeptWithinTheArrays) {
     EXPECT_EQ(none.numLegs(), 0);
     EXPECT_FALSE(none.robotSupported());
     EXPECT_FALSE(none.update(DT, DT_NS).commanded);
+}
+
+// ---- Each leg's solver --------------------------------------------------------------------------
+
+namespace {
+
+RobotDefinition explorerOn(gait_core::LegSolver solver) {
+    RobotDefinition robot = RobotDefinition::explorer();
+    for (int leg = 0; leg < robot.numLegs; ++leg) {
+        robot.legs[leg].solver = solver;
+    }
+    return robot;
+}
+
+/**
+ * @brief Runs an engine with perfect servos (each command comes back as the joint state)
+ * @return The command of every tick
+*/
+std::vector<GaitOutput> run(GaitEngine& engine, int ticks) {
+    std::vector<GaitOutput> outputs;
+    JointFeedback feedback;
+    feedback.present.fill(true);
+    for (int i = 0; i < ticks; ++i) {
+        feedback.stamp = (i + 1) * DT_NS;
+        engine.onJointStates(feedback);
+        const GaitOutput out = engine.update(DT, (i + 2) * DT_NS);
+        if (out.commanded) {
+            feedback.angles = out.joints;
+        }
+        outputs.push_back(out);
+    }
+    return outputs;
+}
+
+}  // namespace
+
+TEST(LegSolver, ExplorerUsesTheAnalyticSolver) {
+    const GaitEngine engine;
+    for (int leg = 0; leg < engine.numLegs(); ++leg) {
+        EXPECT_EQ(RobotDefinition::explorer().legs[leg].solver, gait_core::LegSolver::Hexapod3Dof) << "leg " << leg;
+        EXPECT_EQ(engine.legSolver(leg), gait_core::LegSolver::Hexapod3Dof) << "leg " << leg;
+    }
+}
+
+TEST(LegSolver, ALegDefinedWithoutOneUsesItsChain) {
+    gait_core::LegDefinition leg{};
+    EXPECT_EQ(leg.solver, gait_core::LegSolver::Chain) << "the default must work for any leg";
+
+    const GaitEngine engine(gait_core::GaitParams{}, explorerOn(gait_core::LegSolver::Chain));
+    for (int i = 0; i < engine.numLegs(); ++i) {
+        EXPECT_EQ(engine.legSolver(i), gait_core::LegSolver::Chain) << "leg " << i;
+    }
+}
+
+TEST(LegSolver, TheAnalyticSolverOnlyWhereItFits) {
+    // HexapodLeg3Dof is a coxa about z then femur and tibia about y, all along x: any lengths, but
+    // anything else asking for it gets its chain instead of the wrong maths
+    RobotDefinition robot = RobotDefinition::explorer();
+    robot.legs[0].joints[2].origin.x() += static_cast<Scalar>(0.01);   // a longer femur: still fits
+    robot.legs[1].joints[1].axis = Vector3d::UnitX();                  // femur about the wrong axis
+    robot.legs[2].numJoints = 4;                                        // an extra joint
+    robot.legs[2].joints[3] = {robot.legs[2].foot, Vector3d::UnitY(), -1, 1};
+    robot.legs[3].foot.z() = static_cast<Scalar>(-0.02);               // foot not straight out
+    robot.legs[4].joints[1].origin.y() = static_cast<Scalar>(0.01);    // femur joint off to the side
+    const GaitEngine engine(gait_core::GaitParams{}, robot);
+    EXPECT_EQ(engine.legSolver(0), gait_core::LegSolver::Hexapod3Dof);
+    for (int leg = 1; leg <= 4; ++leg) {
+        EXPECT_EQ(engine.legSolver(leg), gait_core::LegSolver::Chain) << "leg " << leg;
+    }
+    EXPECT_EQ(engine.legSolver(5), gait_core::LegSolver::Hexapod3Dof);
+}
+
+TEST(LegSolver, ExplorerOnItsChainsStandsLikeTheAnalyticSolver) {
+    // Startup and standing up, tick by tick: the numerical IK agrees with the analytic one to well
+    // under a servo step (~1.5e-3 rad)
+    GaitEngine analytic;
+    GaitEngine chain(gait_core::GaitParams{}, explorerOn(gait_core::LegSolver::Chain));
+    const std::vector<GaitOutput> expected = run(analytic, 400);
+    const std::vector<GaitOutput> actual = run(chain, 400);
+    ASSERT_TRUE(expected.back().commanded);
+    double worst = 0;
+    size_t worstTick = 0;
+    int worstLeg = 0;
+    for (size_t i = 0; i < expected.size(); ++i) {
+        ASSERT_EQ(actual[i].commanded, expected[i].commanded) << "tick " << i;
+        for (int leg = 0; leg < analytic.numLegs(); ++leg) {
+            ASSERT_EQ(actual[i].joints[leg].size(), 3);
+            const double difference = static_cast<double>((actual[i].joints[leg] - expected[i].joints[leg]).cwiseAbs().maxCoeff());
+            if (difference > worst) {
+                worst = difference;
+                worstTick = i;
+                worstLeg = leg;
+            }
+        }
+    }
+    EXPECT_LT(worst, 1e-3) << "tick " << worstTick << " leg " << worstLeg << ": chain "
+        << actual[worstTick].joints[worstLeg].transpose() << ", analytic " << expected[worstTick].joints[worstLeg].transpose();
+    RecordProperty("worst_joint_difference_rad", std::to_string(worst));
 }

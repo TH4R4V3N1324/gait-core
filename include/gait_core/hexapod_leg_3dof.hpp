@@ -17,8 +17,8 @@ class HexapodLeg3Dof : public LegKinematics {
 private:
     KinematicSolver solver;
 public:
-    explicit HexapodLeg3Dof(const RobotDefinition& geometry = RobotDefinition::explorer())
-        : solver(geometry) {}
+    explicit HexapodLeg3Dof(const LegDefinition& leg = RobotDefinition::explorer().legs[0])
+        : solver(leg) {}
 
     static constexpr int kNumJoints = 3;  // coxa, femur, tibia
 

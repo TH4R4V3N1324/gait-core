@@ -23,10 +23,15 @@ private:
     Scalar femurLength;
     Scalar tibiaLength;
 public:
-    explicit KinematicSolver(const RobotDefinition& geometry = RobotDefinition::explorer())
-        : coxaLength(geometry.coxaLength),
-          femurLength(geometry.femurLength),
-          tibiaLength(geometry.tibiaLength) {}
+    /**
+     * @brief Take the link lengths from a coxa/femur/tibia leg's chain
+     * @param[in] leg The leg: joints[1].origin is the coxa link, joints[2].origin the femur, foot
+     *            the tibia (see GaitEngine for the shape this solver needs)
+    */
+    explicit KinematicSolver(const LegDefinition& leg = RobotDefinition::explorer().legs[0])
+        : coxaLength(leg.joints[1].origin.norm()),
+          femurLength(leg.joints[2].origin.norm()),
+          tibiaLength(leg.foot.norm()) {}
 
     JointAngles solveIK(const Vec3& target, bool mirrored = false, bool* clamped = nullptr) const;
     Vec3 solveFK(const JointAngles& angles) const;

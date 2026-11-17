@@ -11,6 +11,7 @@
 #include "gait_core/robot_definition.hpp"
 #include "gait_core/trajectory_generator.hpp"
 #include "gait_core/types.hpp"
+#include "gait_core/chain_kinematics.hpp"
 
 namespace gait_core {
 
@@ -95,9 +96,10 @@ enum class SitState : uint8_t {
 
 /**
  * @brief Measured joint state of every leg
- * @note Each leg's vectors start as HexapodLeg3Dof::kNumJoints zeros. A default JointVec is
- *       empty, not zero, so they must never be left default-constructed. A leg whose angles
- *       don't have its kinematics' numJoints() entries is treated as not reported.
+ * @note Each leg's vectors start as HexapodLeg3Dof::kNumJoints (3) zeros, which suits explorer. For
+ *       legs with another joint count, size them to that leg's LegDefinition::numJoints: a leg
+ *       whose angles have a different number of entries is treated as not reported. (A default
+ *       JointVec is empty, not zero, so they must never be left default-constructed.)
 */
 struct JointFeedback {
     Timestamp stamp = 0;
@@ -247,24 +249,36 @@ public:
     std::function<void(bool seated)> seatedChanged;         // optional: a sit or stand began or ended
     FootholdPlanner* footholdPlanner = nullptr;             // optional, not owned
     void setLegKinematics(int legNum, const LegKinematics* kinematics);  // not owned; null = built in
-    int numLegs() const { return robot_geometry.numLegs; }
+    int numLegs() const { return robot.numLegs; }
     // Whether the gaits can schedule this robot's legs. Until they're built from offsets and a duty
     // factor, the schedules are explorer's six legs, so any other count never moves.
     bool robotSupported() const { return numLegs() == NUM_LEGS; }
+    // The solver each leg uses (unless setLegKinematics overrides it): its definition's, except
+    // that a leg asking for Hexapod3Dof whose chain isn't explorer's coxa/femur/tibia gets Chain
+    LegSolver legSolver(int legNum) const { return leg_solver[legNum]; }
 
 private:
     GaitParams p;
-    RobotDefinition robot_geometry;   // kept so cutting servo power can rebuild the engine
+    RobotDefinition robot;   // kept so cutting servo power can rebuild the engine
     TrajectoryGenerator trajectoryGen;
     GaitConfig config;
-    JointLimits limits;
 
-    // Every leg's kinematics. A null entry means ikSolver, rather than a pointer to it, so copying
-    // or moving the engine (cutServoPower does) can never leave a pointer into the old engine.
-    HexapodLeg3Dof ikSolver;
+    // Every leg's kinematics: an override from setLegKinematics (not owned) if set, otherwise the
+    // leg's analytic solver or its chain, as leg_solver says, both built from its definition. The
+    // built in ones are members rather than pointers to them, so copying or moving the engine
+    // (cutServoPower does) can never leave a pointer into the old engine.
+    std::array<HexapodLeg3Dof, kMaxLegs> analytic;
+    std::array<ChainKinematics, kMaxLegs> chains;
+    std::array<LegSolver, kMaxLegs> leg_solver{};
     std::array<const LegKinematics*, kMaxLegs> legKinematics{};
     const LegKinematics& kinematics(int legNum) const {
-        return legKinematics[legNum] != nullptr ? *legKinematics[legNum] : ikSolver;
+        if (legKinematics[legNum] != nullptr) {
+            return *legKinematics[legNum];
+        }
+        if (leg_solver[legNum] == LegSolver::Hexapod3Dof) {
+            return analytic[legNum];
+        }
+        return chains[legNum];
     }
 
     VelocityCommand velocity{};

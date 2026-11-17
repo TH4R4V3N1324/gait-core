@@ -104,7 +104,7 @@ LegDefinition fourJointLeg() {
 
 TEST(ChainKinematics, FkMatchesTheAnalyticLegOnEveryExplorerLeg) {
     const RobotDefinition robot = RobotDefinition::explorer();
-    const HexapodLeg3Dof analytic(robot);
+    const HexapodLeg3Dof analytic(robot.legs[0]);  // every explorer leg has the same chain
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
         const ChainKinematics chain(robot.legs[leg]);
         ASSERT_EQ(chain.numJoints(), 3);
@@ -116,7 +116,7 @@ TEST(ChainKinematics, FkMatchesTheAnalyticLegOnEveryExplorerLeg) {
 
 TEST(ChainKinematics, JacobianMatchesTheAnalyticLeg) {
     const RobotDefinition robot = RobotDefinition::explorer();
-    const HexapodLeg3Dof analytic(robot);
+    const HexapodLeg3Dof analytic(robot.legs[0]);  // every explorer leg has the same chain
     const ChainKinematics chain(robot.legs[0]);
     forExplorerPoses([&](const JointVec& q) {
         ASSERT_NEAR((chain.jacobian(q) - analytic.jacobian(q)).norm(), 0.0, tol(1e-12)) << "at " << q.transpose();
@@ -132,7 +132,7 @@ TEST(ChainKinematics, JacobianMatchesFiniteDifferences) {
 
 TEST(ChainKinematics, GroundForceMatchesTheAnalyticLeg) {
     const RobotDefinition robot = RobotDefinition::explorer();
-    const HexapodLeg3Dof analytic(robot);
+    const HexapodLeg3Dof analytic(robot.legs[0]);  // every explorer leg has the same chain
     const ChainKinematics chain(robot.legs[0]);
     const JointVec q = angles({0.2, -0.4, 1.6});
     const JointVec torques = angles({0.4, -0.9, 0.3});
@@ -163,7 +163,7 @@ TEST(ChainKinematics, IkRoundTripsFromANearbySeed) {
         JointVec solved;
         ASSERT_TRUE(chain.ik(target, seed, solved)) << "at " << q.transpose();
         ASSERT_EQ(solved.size(), 3);
-        EXPECT_LT((chain.fk(solved) - target).norm(), 1e-5) << "at " << q.transpose();
+        EXPECT_LT((chain.fk(solved) - target).norm(), ChainKinematics::IK_TOLERANCE) << "at " << q.transpose();
         EXPECT_NEAR((solved - q).norm(), 0.0, 1e-3) << "a different solution from the seed's at " << q.transpose();
         ++solves;
     });
@@ -173,7 +173,7 @@ TEST(ChainKinematics, IkRoundTripsFromANearbySeed) {
 
 TEST(ChainKinematics, IkAgreesWithTheAnalyticSolve) {
     const RobotDefinition robot = RobotDefinition::explorer();
-    const HexapodLeg3Dof analytic(robot);
+    const HexapodLeg3Dof analytic(robot.legs[0]);  // every explorer leg has the same chain
     const ChainKinematics chain(robot.legs[0]);
     for (const Vector3d& foot : {v(0.17965, 0, -0.13353), v(0.24896, -0.05286, -0.07071), v(0.15, 0.08, -0.12)}) {
         JointVec expected;
@@ -182,9 +182,9 @@ TEST(ChainKinematics, IkAgreesWithTheAnalyticSolve) {
         seed.array() -= static_cast<Scalar>(0.15);
         JointVec solved;
         ASSERT_TRUE(chain.ik(foot, seed, solved)) << foot.transpose();
-        // IK stops within 1e-5 m of the foot, ~1e-4 rad here; a servo step is ~1.5e-3 rad
+        // IK stops within IK_TOLERANCE of the foot, well under 1e-3 rad here; a servo step is ~1.5e-3 rad
         EXPECT_NEAR((solved - expected).norm(), 0.0, 1e-3) << foot.transpose();
-        EXPECT_LT((analytic.fk(solved) - foot).norm(), 1e-5) << foot.transpose();
+        EXPECT_LT((analytic.fk(solved) - foot).norm(), ChainKinematics::IK_TOLERANCE) << foot.transpose();
     }
 }
 
@@ -210,7 +210,7 @@ TEST(ChainKinematics, IkStartsFromZerosForASeedOfTheWrongSize) {
     JointVec solved;
     EXPECT_TRUE(chain.ik(target, JointVec(), solved));
     EXPECT_EQ(solved.size(), 3);
-    EXPECT_LT((chain.fk(solved) - target).norm(), 1e-5);
+    EXPECT_LT((chain.fk(solved) - target).norm(), ChainKinematics::IK_TOLERANCE);
 }
 
 // ---- Other joint counts -----------------------------------------------------------------------
@@ -227,7 +227,7 @@ TEST(ChainKinematics, TwoJointLeg) {
     const Vector3d target = chain.fk(q);
     JointVec solved;
     ASSERT_TRUE(chain.ik(target, angles({0.2, 1.0}), solved));
-    EXPECT_LT((chain.fk(solved) - target).norm(), 1e-5);
+    EXPECT_LT((chain.fk(solved) - target).norm(), ChainKinematics::IK_TOLERANCE);
 }
 
 TEST(ChainKinematics, FourJointLeg) {
@@ -242,7 +242,7 @@ TEST(ChainKinematics, FourJointLeg) {
     const Vector3d target = chain.fk(q);
     JointVec solved;
     ASSERT_TRUE(chain.ik(target, angles({0.2, -0.3, 1.2, 0.3}), solved));
-    EXPECT_LT((chain.fk(solved) - target).norm(), 1e-5);
+    EXPECT_LT((chain.fk(solved) - target).norm(), ChainKinematics::IK_TOLERANCE);
 }
 
 TEST(ChainKinematics, AxesNeedNotBeUnitLength) {

@@ -16,12 +16,17 @@ struct LegConfig {
     Vec3 translation_offset;   // m, position of the coxa joint in the body frame
 };
 
+enum class LegSolver : uint8_t {
+    Chain,          // a generic chain of revolute joints (ChainKinematics): works for any leg
+    Hexapod3Dof,    // the analytic coxa/femur/tibia solver (HexapodLeg3Dof), for explorer
+};
 
 struct LegDefinition {
     LegConfig mount;                                        // as today: yaw + coxa position
     int numJoints = 0;
     std::array<JointDefinition, kMaxJointsPerLeg> joints;   // body to foot
-    Vec3 foot;                                              // m, last joint to foot  
+    Vec3 foot;                                              // m, last joint to foot
+    LegSolver solver = LegSolver::Chain;                    // which kinematics to use for this leg  
 };
 
 } // namespace gait_core

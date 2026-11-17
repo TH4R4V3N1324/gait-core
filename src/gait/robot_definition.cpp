@@ -48,7 +48,9 @@ RobotDefinition RobotDefinition::explorer() {
     const Vec3 foot_offset = v(0.186, 0, 0);
 
     auto leg = [&](Scalar yaw, const Vec3& coxaPosition) {
-        return LegDefinition{{yaw, coxaPosition}, 3, {coxa, femur, tibia}, foot_offset};
+        LegDefinition def{{yaw, coxaPosition}, 3, {coxa, femur, tibia}, foot_offset};
+        def.solver = LegSolver::Hexapod3Dof;  // the analytic solver matches the URDF
+        return def;
     };
 
     g.legs[LEG_FRONT_RIGHT]  = leg(-kPi / 4, Vec3(cx, -cy, 0));
@@ -64,17 +66,7 @@ RobotDefinition RobotDefinition::explorer() {
     g.standHeight = static_cast<Scalar>(-0.134);
 
     g.maxStride = static_cast<Scalar>(0.06);
-
-    // The shared link lengths and limits KinematicSolver and the engine still read, taken from the
-    // chain so the two can't disagree (until they're replaced by the chain itself)
-    g.coxaLength  = femur.origin.norm();
-    g.femurLength = tibia.origin.norm();
-    g.tibiaLength = foot_offset.norm();
-    g.limits.coxaMax  = coxa.upper;
-    g.limits.femurMin = femur.lower;
-    g.limits.femurMax = femur.upper;
-    g.limits.tibiaMin = tibia.lower;
-    g.limits.tibiaMax = tibia.upper;
+    
     return g;
 }
 

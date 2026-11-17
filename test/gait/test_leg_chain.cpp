@@ -80,7 +80,7 @@ TEST(LegChain, HandWorkedPoses) {
 TEST(LegChain, MatchesKinematicSolverAcrossTheJointRanges) {
     // Every leg, on a grid covering each joint's whole range
     const RobotDefinition robot = RobotDefinition::explorer();
-    const KinematicSolver solver(robot);
+    const KinematicSolver solver(robot.legs[0]);  // every explorer leg has the same chain
     constexpr int STEPS = 12;
     double worst = 0;
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
@@ -103,19 +103,25 @@ TEST(LegChain, MatchesKinematicSolverAcrossTheJointRanges) {
     RecordProperty("worst_error_m", std::to_string(worst));
 }
 
-TEST(LegChain, SharedLinkLengthsAndLimitsAgreeWithTheChain) {
-    // explorer() still fills the old shared fields for KinematicSolver and the engine
-    const RobotDefinition robot = RobotDefinition::explorer();
-    const LegDefinition& leg = robot.legs[0];
-    EXPECT_EQ(robot.coxaLength, leg.joints[1].origin.norm());
-    EXPECT_EQ(robot.femurLength, leg.joints[2].origin.norm());
-    EXPECT_EQ(robot.tibiaLength, leg.foot.norm());
-    EXPECT_EQ(robot.coxaLength, static_cast<Scalar>(0.063));
-    EXPECT_EQ(robot.femurLength, static_cast<Scalar>(0.100));
-    EXPECT_EQ(robot.tibiaLength, static_cast<Scalar>(0.186));
-    EXPECT_EQ(robot.limits.coxaMax, leg.joints[0].upper);
-    EXPECT_EQ(robot.limits.femurMin, leg.joints[1].lower);
-    EXPECT_EQ(robot.limits.femurMax, leg.joints[1].upper);
-    EXPECT_EQ(robot.limits.tibiaMin, leg.joints[2].lower);
-    EXPECT_EQ(robot.limits.tibiaMax, leg.joints[2].upper);
+TEST(LegChain, ExplorerMatchesTheUrdf) {
+    // Link lengths and joint ranges as in hexapod-ros2's URDF
+    const LegDefinition& leg = RobotDefinition::explorer().legs[0];
+    EXPECT_EQ(leg.joints[1].origin, Vector3d(static_cast<Scalar>(0.063), 0, 0));   // coxa link
+    EXPECT_EQ(leg.joints[2].origin, Vector3d(static_cast<Scalar>(0.100), 0, 0));   // femur
+    EXPECT_EQ(leg.foot, Vector3d(static_cast<Scalar>(0.186), 0, 0));               // tibia
+    const Scalar ranges[3][2] = {{-1.4f, 1.4f}, {-1.6f, 1.4f}, {-0.78f, 2.63f}};
+    for (int j = 0; j < 3; ++j) {
+        EXPECT_NEAR(leg.joints[j].lower, ranges[j][0], 1e-6) << "joint " << j;
+        EXPECT_NEAR(leg.joints[j].upper, ranges[j][1], 1e-6) << "joint " << j;
+    }
+}
+
+TEST(LegChain, TheAnalyticSolverTakesItsLengthsFromTheLeg) {
+    // A longer femur: the solver built from this leg must use it, not explorer's
+    LegDefinition leg = RobotDefinition::explorer().legs[0];
+    leg.joints[2].origin.x() = static_cast<Scalar>(0.12);
+    const KinematicSolver solver(leg);
+    EXPECT_NEAR((solver.solveFK(JointAngles{0, 0, 0}) - Vector3d(static_cast<Scalar>(0.369), 0, 0)).norm(), 0.0, tol(1e-9));
+    const JointVec q = angles(0.3, -0.5, 1.4);
+    EXPECT_NEAR((chainFoot(leg, q) - solver.solveFK(JointAngles{q(0), q(1), q(2)})).norm(), 0.0, tol(1e-12));
 }

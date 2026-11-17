@@ -5,6 +5,12 @@
 
 namespace gait_core {
 
+ChainKinematics::ChainKinematics() {
+    leg_.mount = {Scalar(0), Vec3::Zero()};
+    leg_.numJoints = 0;
+    leg_.foot = Vec3::Zero();
+}
+
 ChainKinematics::ChainKinematics(const LegDefinition& leg) : leg_(leg) {
     leg_.numJoints = std::clamp(leg_.numJoints, 0, kMaxJointsPerLeg);
     for (int j = 0; j < leg_.numJoints; ++j) {
@@ -35,48 +41,77 @@ Vec3 ChainKinematics::fk(const JointVec& q) const {
  * @param[in] target The foot position in the leg frame (m)
  * @param[in] seed Where to start, normally the current angles; zeros if it's the wrong size
  * @param[out] q The angles, always within the joint limits
- * @return true if the foot is within 1e-5 m of target. false if it isn't after MAX_ITERATIONS:
- *         out of reach, or occasionally a seed far from any solution. q is then the closest pose
- *         found, never further from target than the seed.
- * @note Each step solves J dq = error as (J^T (J J^T + damping^2 I)^-1) error, which stays well
- *       behaved near a straight leg where J loses rank. J J^T is 3x3 for any number of joints.
- *       Each step aims at most MAX_STEP closer: a target far out of reach would otherwise ask for
- *       joint moves of several radians, overshoot, and end up anywhere.
+ * @return true if the foot is within IK_TOLERANCE of target. false if not: out of reach, in which
+ *         case q is the closest pose found, never further from target than the seed.
+ * @note Solves from the seed, so normally finds the solution nearest it. If that doesn't converge
+ *       it solves again from the middle of every joint's range and keeps the better: a seed on a
+ *       singularity, such as a straight leg at power up, can't move the foot along the leg at all.
 */
 bool ChainKinematics::ik(const Vec3& target, const JointVec& seed, JointVec& q) const {
-    constexpr int MAX_ITERATIONS = 20;          // bounded, so the time per tick is too
-    constexpr Scalar TOLERANCE = Scalar(1e-5);  // m
-    constexpr Scalar DAMPING = Scalar(0.01);
-    constexpr Scalar MAX_STEP = Scalar(0.05);   // m, how far one step aims to move the foot
-
     if (seed.size() == numJoints()) {
         q = seed;
     } else {
         q = JointVec::Zero(numJoints());
     }
+    Scalar error = descend(target, q);
+    if (error < IK_TOLERANCE) {
+        return true;
+    }
 
-    JointVec best = q;
-    Scalar bestError = (target - fk(q)).norm();
-    for (int i = 0; i < MAX_ITERATIONS && bestError >= TOLERANCE; ++i) {
+    JointVec middle(numJoints());
+    for (int j = 0; j < leg_.numJoints; ++j) {
+        middle(j) = (leg_.joints[j].lower + leg_.joints[j].upper) / 2;
+    }
+    const Scalar middleError = descend(target, middle);
+    if (middleError < error) {
+        q = middle;
+        error = middleError;
+    }
+    return error < IK_TOLERANCE;
+}
+
+/**
+ * @brief Damped least squares from q towards target, for at most MAX_ITERATIONS steps
+ * @param[in] target The foot position in the leg frame (m)
+ * @param[in,out] q Where to start; on return the closest pose found, within the joint limits
+ * @return How far that pose's foot is from target (m)
+ * @note Each step solves J dq = error as (J^T (J J^T + damping^2 I)^-1) error, which stays well
+ *       behaved near a straight leg where J loses rank. J J^T is 3x3 for any number of joints.
+ *       The damping adapts (Levenberg-Marquardt): smaller after a step that helped, so a nearly
+ *       straight leg still converges in a few steps, and larger after one that didn't, which is
+ *       undone. Each step also aims at most MAX_STEP closer: a target far out of reach would
+ *       otherwise ask for joint moves of several radians, overshoot, and end up anywhere.
+*/
+Scalar ChainKinematics::descend(const Vec3& target, JointVec& q) const {
+    constexpr int MAX_ITERATIONS = 20;          // bounded, so the time per tick is too
+    constexpr Scalar MIN_DAMPING = Scalar(1e-6);
+    constexpr Scalar MAX_DAMPING = Scalar(1.0);
+    constexpr Scalar MAX_STEP = Scalar(0.05);   // m, how far one step aims to move the foot
+
+    Scalar damping = Scalar(0.01);
+    Scalar error = (target - fk(q)).norm();
+    for (int i = 0; i < MAX_ITERATIONS && error >= IK_TOLERANCE; ++i) {
         Vec3 step = target - fk(q);
         const Scalar distance = step.norm();
         if (distance > MAX_STEP) {
             step *= MAX_STEP / distance;
         }
         const LegJacobian J = jacobian(q);
-        const Mat3 A = J * J.transpose() + DAMPING * DAMPING * Mat3::Identity();
-        q += J.transpose() * A.ldlt().solve(step);
+        const Mat3 A = J * J.transpose() + damping * damping * Mat3::Identity();
+        JointVec next = q + J.transpose() * A.ldlt().solve(step);
         for (int j = 0; j < leg_.numJoints; ++j) {
-            q(j) = std::clamp(q(j), leg_.joints[j].lower, leg_.joints[j].upper);
+            next(j) = std::clamp(next(j), leg_.joints[j].lower, leg_.joints[j].upper);
         }
-        const Scalar error = (target - fk(q)).norm();
-        if (error < bestError) {
-            best = q;
-            bestError = error;
+        const Scalar nextError = (target - fk(next)).norm();
+        if (nextError < error) {
+            q = next;   // keep it, and be bolder
+            error = nextError;
+            damping = std::max(MIN_DAMPING, damping / 10);
+        } else {
+            damping = std::min(MAX_DAMPING, damping * 10);   // undo it, and be more careful
         }
     }
-    q = best;
-    return bestError < TOLERANCE;
+    return error;
 }
 
 /**
