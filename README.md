@@ -69,6 +69,26 @@ controllers can use them too.
 | --- | --- |
 | `explorer.hpp` | Explorer, a hexapod: `gait_core::explorer::robot()`, and names for its legs (`LEG_FRONT_RIGHT` …) and gaits (`GAIT_TRIPOD`, `GAIT_RIPPLE`, `GAIT_WAVE`) |
 
+#### Other robots
+
+Explorer is the only robot shipped, but the engine isn't specific to it. The tests run three
+others through everything it does (stand, walk, turn, stop, tilt, sit, power down and up), with
+every command checked against its leg's joint count and limits (`test/test_robots.hpp`,
+`test/robot/test_other_robots.cpp`):
+
+- **A quadruped** (explorer's legs on a square body, crawling): works, swaying its body over the
+  three planted feet before each lift. A trot is refused unless `allow_unstable_gaits` is set,
+  since two feet can't hold the body up and no sway helps.
+- **Four joints per leg** (an ankle added): works on `ChainKinematics`. The spare joint is eased
+  towards the middle of its range without moving the foot, so a stance comes back in the same pose
+  whatever path the legs took.
+- **Two joints per leg** (a coxa and one pitch joint): walks and turns, but its foot moves on a
+  surface, where each distance from the hip has one height. Planted feet differ in height by up to
+  about 10 mm as their reach changes through a stride. It can't take the seated pose (startup
+  stands it straight up, with a warning), sit or power down (both refused: sitting steps the feet
+  out before lowering), or tilt far (limited by reach, with a warning). Foot forces aren't
+  estimated: two joints can't resolve a 3D force.
+
 ### Behaviours
 
 Each behaviour takes sensor readings and returns what to do; the robot does it with its own

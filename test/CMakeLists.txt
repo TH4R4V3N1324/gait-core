@@ -16,6 +16,7 @@ include(GoogleTest)
 set(GAIT_TESTS
   robot/test_gait_schedule
   robot/test_leg_chain
+  robot/test_other_robots
   robot/test_robot_definition
   kinematics/test_chain_kinematics
   kinematics/test_foot_force

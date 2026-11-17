@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "test_common.hpp"
+#include "test_robots.hpp"
 
 #include <atomic>
 #include <cstdlib>
@@ -218,4 +219,71 @@ TEST(NoHeap, ChainKinematicsNeverAllocates) {
     }
     EXPECT_EQ(allocations.load() - before, 0) << "allocations in ChainKinematics";
     EXPECT_GT(reached, 0);
+}
+
+namespace {
+
+/**
+ * @brief Run one of the other test robots through walking, turning, stopping, tilt and sitting
+ * @return The allocations made after it stood up
+*/
+long allocationsRunning(const gait_core::RobotDefinition& robot, double speed, bool sits) {
+    GaitEngine engine{gait_core::GaitParams{}, robot};
+    engine.log = [](LogLevel, const char*) { ++logged; };
+    JointFeedback feedback;
+    for (int leg = 0; leg < robot.numLegs; ++leg) {
+        feedback.present[leg] = true;
+        feedback.angles[leg] = JointVec::Zero(robot.legs[leg].numJoints);
+    }
+    Timestamp now = 1'000'000'000;
+    auto run = [&](double seconds) {
+        const int ticks = static_cast<int>(seconds / 0.01 + 0.5);
+        for (int i = 0; i < ticks; ++i) {
+            feedback.stamp = now;
+            engine.onJointStates(feedback);
+            now += 10'000'000;
+            const GaitOutput out = engine.update(static_cast<Scalar>(0.01), now);
+            if (out.commanded) {
+                for (int leg = 0; leg < robot.numLegs; ++leg) {
+                    feedback.angles[leg] = out.joints[leg];
+                }
+            }
+        }
+    };
+    run(3.0);
+    engine.sit(false);
+    run(20.0);
+
+    const long before = allocations.load();
+    engine.setVelocity({static_cast<Scalar>(speed), 0, 0});
+    run(5.0);
+    engine.setVelocity({0, 0, static_cast<Scalar>(0.15)});
+    run(5.0);
+    engine.setVelocity({0, 0, 0});
+    run(8.0);
+    engine.setMode(gait_core::MODE_TILT);
+    run(1.0);
+    engine.setBodyPose(static_cast<Scalar>(0.06), 0, 0, Vec3(static_cast<Scalar>(0.01), 0, 0));
+    run(2.0);
+    engine.setMode(gait_core::MODE_NORMAL);
+    run(3.0);
+    if (sits) {
+        engine.sit(true);
+        run(15.0);
+    }
+    return allocations.load() - before;
+}
+
+}  // namespace
+
+TEST(NoHeap, AQuadrupedSwayingNeverAllocates) {
+    EXPECT_EQ(allocationsRunning(test_robots::quadruped(), 0.03, true), 0);
+}
+
+TEST(NoHeap, FourJointLegsNeverAllocate) {
+    EXPECT_EQ(allocationsRunning(test_robots::fourJointHexapod(), 0.08, true), 0);
+}
+
+TEST(NoHeap, TwoJointLegsNeverAllocate) {
+    EXPECT_EQ(allocationsRunning(test_robots::twoJointHexapod(), 0.05, false), 0);
 }
