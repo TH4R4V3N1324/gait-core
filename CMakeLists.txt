@@ -51,6 +51,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(gait_core STATIC
   src/gait/gait_config.cpp
+  src/gait/gait_pattern.cpp
   src/gait/gait_engine.cpp
   src/gait/hexapod_leg_3dof.cpp
   src/gait/kinematic_solver.cpp

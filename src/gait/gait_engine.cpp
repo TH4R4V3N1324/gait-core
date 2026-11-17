@@ -439,11 +439,17 @@ Scalar GaitEngine::floorRise() const {
 // ---------------------------------------------------------------------------------------------
 
 CommandResult GaitEngine::setGait(uint8_t gait) {
-    config.setGait(static_cast<Gait>(gait));
-    emit(LogLevel::Info, "Gait %d requested", gait);
     CommandResult result;
+    // An index past the robot's list would give an empty schedule, and phase % 0
+    if (gait >= config.numGaits()) {
+        setMessage(result, "Gait %d is not one of this robot's %d gaits", gait, config.numGaits());
+        emit(LogLevel::Warn, "%s", result.message);
+        return result;
+    }
+    config.setGait(gait);
+    emit(LogLevel::Info, "Gait %d (%s) requested", gait, config.gaitName(gait));
     result.success = true;
-    setMessage(result, "Gait %d requested, applies at the next step", gait);
+    setMessage(result, "Gait %d (%s) requested, applies at the next step", gait, config.gaitName(gait));
     return result;
 }
 
@@ -668,8 +674,13 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
     now_ = now;
     // A leg count the gait schedules can't handle: never command, and keep the servos off
     if (!robotSupported()) {
-        emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error,
-            "Robot has %d legs, but the gaits only schedule %d: it won't move", numLegs(), static_cast<int>(NUM_LEGS));
+        const int gait = config.unrunnableGait();
+        if (config.numGaits() == 0) {
+            emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error, "Robot has no gaits: it won't move");
+        } else {
+            emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error,
+                "Gait %d (%s) can't run on this robot's %d legs: it won't move", gait, config.gaitName(static_cast<uint8_t>(gait)), numLegs());
+        }
         output.commanded = false;
         output.servoPower = false;
         return output;
@@ -976,11 +987,7 @@ void GaitEngine::applyPendingGait() {
     phase = 0;
     phase_progress = 0;
     leg_swinging.fill(false);
-    for (const auto& option : config.getGaits()) {
-        if (option.id == config.currentGait) {
-            emit(LogLevel::Info, "Gait changed to %s", option.name);
-        }
-    }
+    emit(LogLevel::Info, "Gait changed to %s", config.gaitName(config.currentGait));
 }
 
 bool GaitEngine::isSwinging(int legNum) const {

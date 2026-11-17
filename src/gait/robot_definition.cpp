@@ -66,7 +66,25 @@ RobotDefinition RobotDefinition::explorer() {
     g.standHeight = static_cast<Scalar>(-0.134);
 
     g.maxStride = static_cast<Scalar>(0.06);
-    
+
+    // Indexed by the Gait names, which controllers and the ROS node use as gait ids
+    g.numGaits = NUM_GAITS;
+    // Two alternating tripods, each stable on its own
+    g.gaits[GAIT_TRIPOD] = GaitPattern::fromGroups("tripod", {
+        {LEG_FRONT_RIGHT, LEG_REAR_RIGHT, LEG_MIDDLE_LEFT},
+        {LEG_MIDDLE_RIGHT, LEG_REAR_LEFT, LEG_FRONT_LEFT},
+    });
+    // Two legs at a time, one from each side
+    g.gaits[GAIT_RIPPLE] = GaitPattern::fromGroups("ripple", {
+        {LEG_REAR_RIGHT, LEG_FRONT_LEFT},
+        {LEG_MIDDLE_RIGHT, LEG_REAR_LEFT},
+        {LEG_FRONT_RIGHT, LEG_MIDDLE_LEFT},
+    });
+    // One leg at a time: the right side rear to front, then the left side rear to front
+    g.gaits[GAIT_WAVE] = GaitPattern::fromGroups("wave", {
+        {LEG_REAR_RIGHT}, {LEG_MIDDLE_RIGHT}, {LEG_FRONT_RIGHT},
+        {LEG_REAR_LEFT}, {LEG_MIDDLE_LEFT}, {LEG_FRONT_LEFT},
+    });
     return g;
 }
 

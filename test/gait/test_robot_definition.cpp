@@ -246,3 +246,71 @@ TEST(LegSolver, ExplorerOnItsChainsStandsLikeTheAnalyticSolver) {
         << actual[worstTick].joints[worstLeg].transpose() << ", analytic " << expected[worstTick].joints[worstLeg].transpose();
     RecordProperty("worst_joint_difference_rad", std::to_string(worst));
 }
+
+// ---- Gaits from the robot -----------------------------------------------------------------------
+
+namespace {
+
+/**
+ * @brief The square quadruped with gaits of its own: trot (diagonal pairs) and crawl
+*/
+RobotDefinition walkingQuadruped() {
+    RobotDefinition robot = quadruped();
+    robot.numGaits = 2;
+    robot.gaits[0] = gait_core::GaitPattern::fromGroups("trot", {{0, 2}, {1, 3}});
+    robot.gaits[1] = gait_core::GaitPattern::fromGroups("crawl", {{0}, {2}, {1}, {3}});
+    return robot;
+}
+
+}  // namespace
+
+TEST(RobotGaits, AnUnknownGaitIsRefused) {
+    GaitEngine engine;
+    const gait_core::CommandResult result = engine.setGait(3);
+    EXPECT_FALSE(result.success);
+    EXPECT_NE(std::string(result.message).find("3 gaits"), std::string::npos) << result.message;
+    EXPECT_FALSE(engine.gaitConfig().gaitChangeRequested);
+    EXPECT_TRUE(engine.setGait(gait_core::GAIT_WAVE).success);
+}
+
+TEST(RobotGaits, AQuadrupedWithItsOwnGaitsIsSupported) {
+    const GaitEngine engine(gait_core::GaitParams{}, walkingQuadruped());
+    EXPECT_TRUE(engine.robotSupported());
+    EXPECT_EQ(engine.gaitConfig().numGaits(), 2);
+    EXPECT_STREQ(engine.gaitConfig().gaitName(1), "crawl");
+}
+
+TEST(RobotGaits, ARobotWithoutGaitsNeverMoves) {
+    RobotDefinition robot = RobotDefinition::explorer();
+    robot.numGaits = 0;
+    GaitEngine engine(gait_core::GaitParams{}, robot);
+    EXPECT_FALSE(engine.robotSupported());
+    EXPECT_FALSE(engine.update(DT, DT_NS).commanded);
+}
+
+TEST(RobotGaits, AQuadrupedStandsAndTrots) {
+    // A smoke test: the engine runs a four-legged robot through startup and a few seconds of trot
+    // with every command finite and sized. How well it walks is for later steps.
+    GaitEngine engine(gait_core::GaitParams{}, walkingQuadruped());
+    JointFeedback feedback;
+    feedback.present.fill(true);
+    int commanded = 0;
+    for (int i = 0; i < 800; ++i) {
+        if (i == 400) {
+            engine.setVelocity({static_cast<Scalar>(0.03), 0, 0});
+        }
+        feedback.stamp = (i + 1) * DT_NS;
+        engine.onJointStates(feedback);
+        const GaitOutput out = engine.update(DT, (i + 2) * DT_NS);
+        if (out.commanded) {
+            ++commanded;
+            for (int leg = 0; leg < 4; ++leg) {
+                ASSERT_EQ(out.joints[leg].size(), 3) << "tick " << i << " leg " << leg;
+                ASSERT_TRUE(out.joints[leg].allFinite()) << "tick " << i << " leg " << leg;
+            }
+            feedback.angles = out.joints;
+        }
+    }
+    EXPECT_GT(commanded, 700);
+    EXPECT_TRUE(engine.initialized());
+}

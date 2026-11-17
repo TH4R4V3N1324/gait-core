@@ -250,9 +250,9 @@ public:
     FootholdPlanner* footholdPlanner = nullptr;             // optional, not owned
     void setLegKinematics(int legNum, const LegKinematics* kinematics);  // not owned; null = built in
     int numLegs() const { return robot.numLegs; }
-    // Whether the gaits can schedule this robot's legs. Until they're built from offsets and a duty
-    // factor, the schedules are explorer's six legs, so any other count never moves.
-    bool robotSupported() const { return numLegs() == NUM_LEGS; }
+    // Whether the engine can run every one of the robot's gaits on its legs (see GaitPattern::schedule).
+    // If not, it never moves and keeps the servos off.
+    bool robotSupported() const { return numLegs() > 0 && config.unrunnableGait() < 0; }
     // The solver each leg uses (unless setLegKinematics overrides it): its definition's, except
     // that a leg asking for Hexapod3Dof whose chain isn't explorer's coxa/femur/tibia gets Chain
     LegSolver legSolver(int legNum) const { return leg_solver[legNum]; }

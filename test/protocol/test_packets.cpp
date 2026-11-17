@@ -12,6 +12,7 @@ size_t hexapod_c_control_size(void);
 size_t hexapod_c_hex_size(void);
 size_t hexapod_c_control_command_offset(void);
 size_t hexapod_c_hex_flags_offset(void);
+size_t hexapod_c_hex_num_gaits_offset(void);
 int hexapod_c_feature_count(void);
 }
 
@@ -28,7 +29,7 @@ static_assert(static_cast<int>(::MODE_CONFIG) == gait_core::NUM_MODES, "");
 
 TEST(Packets, SizesAreFixed) {
     EXPECT_EQ(sizeof(ControlPacket), 29u);
-    EXPECT_EQ(sizeof(HexPacket), 12u);
+    EXPECT_EQ(sizeof(HexPacket), 19u);
     EXPECT_EQ(sizeof(Command), 1u);
     EXPECT_EQ(sizeof(Gait), 1u);
     EXPECT_EQ(sizeof(Mode), 1u);
@@ -44,6 +45,7 @@ TEST(Packets, CAndCppAgree) {
     EXPECT_EQ(hexapod_c_hex_size(), sizeof(HexPacket));
     EXPECT_EQ(hexapod_c_control_command_offset(), offsetof(ControlPacket, command));
     EXPECT_EQ(hexapod_c_hex_flags_offset(), offsetof(HexPacket, flags));
+    EXPECT_EQ(hexapod_c_hex_num_gaits_offset(), offsetof(HexPacket, numGaits));
     EXPECT_EQ(hexapod_c_feature_count(), NUM_FEATURES);
 }
 
@@ -68,3 +70,22 @@ TEST(Packets, FlagsDontOverlapAndFitInAByte) {
     }
     EXPECT_LE(all, 0xFFu);
 }
+
+TEST(Packets, Version4CarriesAnyRobotsLegsAndGaits) {
+    // Every field after legConfigs moved, so old controllers must drop these packets (the version
+    // check) rather than misread them
+    EXPECT_EQ(HEXAPOD_PROTOCOL_VERSION, 4);
+    EXPECT_EQ(offsetof(HexPacket, legConfigs), 1u);
+    EXPECT_EQ(offsetof(HexPacket, currentHeight), 13u);
+    EXPECT_EQ(offsetof(HexPacket, currentGait), 15u);
+    EXPECT_EQ(offsetof(HexPacket, currentMode), 16u);
+    EXPECT_EQ(offsetof(HexPacket, flags), 17u);
+    EXPECT_EQ(offsetof(HexPacket, numGaits), 18u);
+    // Explorer's gait ids are still the protocol's names
+    EXPECT_EQ(gait_core::RobotDefinition::explorer().numGaits, static_cast<int>(NUM_GAITS));
+}
+
+// A robot's calibration offsets must fit, whatever joint count gait core is built for
+static_assert(HEXAPOD_MAX_JOINTS_PER_LEG >= gait_core::kMaxJointsPerLeg,
+              "GAIT_CORE_MAX_JOINTS is more than the protocol's legConfigs can carry");
+static_assert(sizeof(HexPacket::legConfigs) / sizeof(int16_t) == HEXAPOD_MAX_JOINTS_PER_LEG, "");

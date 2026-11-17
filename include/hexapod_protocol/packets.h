@@ -15,12 +15,14 @@
 #include <stdint.h>
 
 /** First byte of every packet. A receiver drops packets with any other version. */
-#define HEXAPOD_PROTOCOL_VERSION 3
+#define HEXAPOD_PROTOCOL_VERSION 4
 
 /** Stick and tilt values run from -HEXAPOD_AXIS_FULL_SCALE to +HEXAPOD_AXIS_FULL_SCALE - 1. */
 #define HEXAPOD_AXIS_FULL_SCALE 128
 /** Controller orientation fields are in radians multiplied by this value. */
 #define HEXAPOD_ANGLE_MILLIRAD_SCALE 1000
+/** Most joints in one leg that HexPacket.legConfigs and CMD_SET_CONFIG can address (version 4). */
+#define HEXAPOD_MAX_JOINTS_PER_LEG 6
 
 #ifdef __cplusplus
 #define HEXAPOD_ENUM(name) enum name : uint8_t
@@ -29,7 +31,10 @@
 #define HEXAPOD_ENUM(name) typedef uint8_t name; enum
 #endif
 
-/** Gaits; the values equal gait_core::Gait. */
+/**
+ * A gait, as an index into the robot's gait list (0 .. HexPacket.numGaits - 1). The names are
+ * explorer's gaits and equal gait_core::Gait; other robots number their own.
+ */
 HEXAPOD_ENUM(Gait) {
     GAIT_TRIPOD,
     GAIT_RIPPLE,
@@ -60,9 +65,9 @@ HEXAPOD_ENUM(GaitFeature) {
 
 HEXAPOD_ENUM(Command) {
     CMD_NONE = 0,
-    CMD_SET_GAIT,        /* [0] gait */
+    CMD_SET_GAIT,        /* [0] gait index, 0 .. HexPacket.numGaits - 1 */
     CMD_SET_MODE,        /* [0] mode */
-    CMD_SET_CONFIG,      /* [0] leg 0-5, [1] joint 0-2, [2] offset in degrees (clamped to +-60) */
+    CMD_SET_CONFIG,      /* [0] leg, [1] joint 0 .. HEXAPOD_MAX_JOINTS_PER_LEG - 1 (body to foot), [2] offset in degrees (clamped to +-60) */
     CMD_HOME_STANCE,     /* stand up */
     CMD_REQUEST_CONFIG,  /* [0] leg; its offsets come back in HexPacket.legConfigs */
     CMD_SIT,             /* [0] 1 sit down, 0 stand up (which also powers the servos up) */
@@ -104,21 +109,22 @@ typedef struct ControlPacket {
 /** Robot -> controller, in reply to each ControlPacket. */
 typedef struct HexPacket {
     uint8_t version;          /* HEXAPOD_PROTOCOL_VERSION */
-    int16_t legConfigs[3];    /* offsets for the leg asked for with CMD_REQUEST_CONFIG */
+    int16_t legConfigs[HEXAPOD_MAX_JOINTS_PER_LEG];  /* offsets for the leg asked for with CMD_REQUEST_CONFIG, body to foot; 0 past its last joint (version 4: was 3) */
     int16_t currentHeight;    /* body height in mm */
     Gait currentGait;         /* the gait it's in, or changing to */
     Mode currentMode;
     uint8_t flags;            /* HEX_FLAG_* */
+    uint8_t numGaits;         /* how many gaits the robot has, for cycling through them (version 4) */
 } HexPacket;
 
 #pragma pack(pop)
 
 #ifdef __cplusplus
 static_assert(sizeof(ControlPacket) == 29, "ControlPacket layout changed: bump HEXAPOD_PROTOCOL_VERSION");
-static_assert(sizeof(HexPacket) == 12, "HexPacket layout changed: bump HEXAPOD_PROTOCOL_VERSION");
+static_assert(sizeof(HexPacket) == 19, "HexPacket layout changed: bump HEXAPOD_PROTOCOL_VERSION");
 #else
 typedef char hexapod_control_packet_size_check[(sizeof(ControlPacket) == 29) ? 1 : -1];
-typedef char hexapod_hex_packet_size_check[(sizeof(HexPacket) == 12) ? 1 : -1];
+typedef char hexapod_hex_packet_size_check[(sizeof(HexPacket) == 19) ? 1 : -1];
 #endif
 
 #endif /* HEXAPOD_PROTOCOL__PACKETS_H */

@@ -1,5 +1,7 @@
 #include "gait_core/gait_config.hpp"
 
+#include <algorithm>
+
 namespace gait_core {
 
 GaitConfig::GaitConfig(const RobotDefinition& geometry)
@@ -7,54 +9,63 @@ GaitConfig::GaitConfig(const RobotDefinition& geometry)
       maxStride(geometry.maxStride),
       homePos(geometry.standReach, 0, 0),
       startPos(geometry.standReach, 0, geometry.standHeight),
-      legCount(geometry.numLegs) {
+      legCount(geometry.numLegs),
+      gaitCount(std::clamp(geometry.numGaits, 0, kMaxGaits)),
+      patterns(geometry.gaits) {
     startPosition.fill(startPos);
+    for (int gait = 0; gait < gaitCount; ++gait) {
+        if (!patterns[gait].schedule(legCount, schedules[gait])) {
+            schedules[gait] = GaitSchedule{};
+        }
+    }
+}
+
+GaitList GaitConfig::getGaits() const {
+    GaitList list;
+    for (int gait = 0; gait < gaitCount; ++gait) {
+        list.items[gait] = {patterns[gait].name, static_cast<uint8_t>(gait)};
+    }
+    list.count = static_cast<size_t>(gaitCount);
+    return list;
+}
+
+int GaitConfig::unrunnableGait() const {
+    if (gaitCount == 0) {
+        return 0;
+    }
+    for (int gait = 0; gait < gaitCount; ++gait) {
+        if (schedules[gait].empty()) {
+            return gait;
+        }
+    }
+    return -1;
 }
 
 /**
  * @brief Which legs swing in each phase of a gait
- * @param[in] gait The gait type
- * @return The schedule, empty for an unknown gait
+ * @param[in] gait The gait's index in the robot's list
+ * @return The schedule, empty for an unknown gait or one that can't run on the robot's legs
 */
-GaitSchedule GaitConfig::getGaitConfig(Gait gait) const {
-    switch (gait) {
-        case GAIT_TRIPOD:
-            // Two alternating tripods, each stable on its own
-            return GaitSchedule::fromGroups({
-                {LEG_FRONT_RIGHT, LEG_REAR_RIGHT, LEG_MIDDLE_LEFT},
-                {LEG_MIDDLE_RIGHT, LEG_REAR_LEFT, LEG_FRONT_LEFT},
-            });
-        case GAIT_RIPPLE:
-            // Two legs at a time, one from each side
-            return GaitSchedule::fromGroups({
-                {LEG_REAR_RIGHT, LEG_FRONT_LEFT},
-                {LEG_MIDDLE_RIGHT, LEG_REAR_LEFT},
-                {LEG_FRONT_RIGHT, LEG_MIDDLE_LEFT},
-            });
-        case GAIT_WAVE:
-            // One leg at a time: the right side rear to front, then the left side rear to front
-            return GaitSchedule::fromGroups({
-                {LEG_REAR_RIGHT}, {LEG_MIDDLE_RIGHT}, {LEG_FRONT_RIGHT},
-                {LEG_REAR_LEFT}, {LEG_MIDDLE_LEFT}, {LEG_FRONT_LEFT},
-            });
-        default:
-            return {};
-    }
+GaitSchedule GaitConfig::getGaitConfig(uint8_t gait) const {
+    return gait < gaitCount ? schedules[gait] : GaitSchedule{};
 }
 
 /**
  * @brief Changes to the next gait when called
 */
 void GaitConfig::cycleGait() {
-    pendingGait = static_cast<Gait>((currentGait + 1) % NUM_GAITS);
+    if (gaitCount == 0) {
+        return;
+    }
+    pendingGait = static_cast<uint8_t>((currentGait + 1) % gaitCount);
     gaitChangeRequested = true;
 }
 
 /**
  * @brief Sets the current gait to the specified gait
- * @param[in] gait The gait to switch to
+ * @param[in] gait The gait to switch to, an index into the robot's gaits (checked by the engine)
 */
-void GaitConfig::setGait(Gait gait) {
+void GaitConfig::setGait(uint8_t gait) {
     pendingGait = gait;
     gaitChangeRequested = true;
 }
