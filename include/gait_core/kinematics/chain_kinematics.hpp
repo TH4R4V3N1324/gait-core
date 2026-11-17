@@ -39,6 +39,7 @@ private:
     LegDefinition leg_;   // a copy, so this never depends on the RobotDefinition outliving it
 
     Scalar descend(const Vec3& target, JointVec& q) const;
+    void settle(const Vec3& target, JointVec& q) const;
 };
 
 }  // namespace gait_core

@@ -55,6 +55,9 @@ bool ChainKinematics::ik(const Vec3& target, const JointVec& seed, JointVec& q) 
     }
     Scalar error = descend(target, q);
     if (error < IK_TOLERANCE) {
+        if (numJoints() > 3) {
+            settle(target, q);
+        }
         return true;
     }
 
@@ -68,6 +71,39 @@ bool ChainKinematics::ik(const Vec3& target, const JointVec& seed, JointVec& q) 
         error = middleError;
     }
     return error < IK_TOLERANCE;
+}
+
+/**
+ * @brief Ease the spare joints of a leg with more than three towards the middle of their ranges,
+ *        without moving the foot
+ * @param[in] target The foot position q reaches (leg frame, m)
+ * @param[in,out] q A solution for target; moved a little along the poses that keep the foot there
+ * @note With more joints than the foot's three directions, every foot position has a family of
+ *       poses, and solving from the last one keeps whichever the leg's path happened to leave it in:
+ *       after a walk the same stance came back with joints up to 0.19 rad apart, and they could drift
+ *       towards their limits. Each solve moves POSTURE_STEP of the way towards mid-range, projected
+ *       so the foot (to first order) doesn't move, then corrects the foot again. Kept only if the
+ *       foot is still within IK_TOLERANCE.
+*/
+void ChainKinematics::settle(const Vec3& target, JointVec& q) const {
+    constexpr Scalar POSTURE_STEP = Scalar(0.02);   // share of the way to mid-range per solve
+    const LegJacobian J = jacobian(q);
+    const Mat3 JJt = J * J.transpose();
+    if (std::abs(JJt.determinant()) < Scalar(1e-12)) {
+        return;   // near a singularity the foot-preserving directions aren't well defined
+    }
+    JointVec pull(numJoints());
+    for (int j = 0; j < leg_.numJoints; ++j) {
+        pull(j) = POSTURE_STEP * ((leg_.joints[j].lower + leg_.joints[j].upper) / 2 - q(j));
+    }
+    // Remove the part of the pull that would move the foot: (I - J^T (J J^T)^-1 J) pull
+    JointVec next = q + pull - J.transpose() * JJt.ldlt().solve(J * pull);
+    for (int j = 0; j < leg_.numJoints; ++j) {
+        next(j) = std::clamp(next(j), leg_.joints[j].lower, leg_.joints[j].upper);
+    }
+    if (descend(target, next) < IK_TOLERANCE) {
+        q = next;
+    }
 }
 
 /**

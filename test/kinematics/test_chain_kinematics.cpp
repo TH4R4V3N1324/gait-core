@@ -254,3 +254,37 @@ TEST(ChainKinematics, AxesNeedNotBeUnitLength) {
     EXPECT_NEAR((scaled.fk(q) - unit.fk(q)).norm(), 0.0, tol(1e-12));
     EXPECT_NEAR((scaled.jacobian(q) - unit.jacobian(q)).norm(), 0.0, tol(1e-12));
 }
+
+TEST(ChainKinematics, ASpareJointSettlesTowardsMidRangeWithoutMovingTheFoot) {
+    // Solving the same target again and again, as the engine does every tick for a planted foot:
+    // the foot stays put while the pose eases towards the middle of every joint's range
+    const LegDefinition leg = fourJointLeg();
+    const ChainKinematics chain(leg);
+    const JointVec start = angles({0.3, -0.4, 1.3, 0.5});
+    const Vector3d target = chain.fk(start);
+    JointVec middle(4);
+    for (int j = 0; j < 4; ++j) {
+        middle(j) = (leg.joints[j].lower + leg.joints[j].upper) / 2;
+    }
+    JointVec q = start;
+    for (int i = 0; i < 300; ++i) {
+        JointVec next;
+        ASSERT_TRUE(chain.ik(target, q, next)) << "solve " << i;
+        q = next;
+        ASSERT_LT((chain.fk(q) - target).norm(), ChainKinematics::IK_TOLERANCE) << "solve " << i;
+    }
+    EXPECT_LT((q - middle).norm(), (start - middle).norm()) << "closer to mid-range";
+    // Settled: one more solve barely moves it
+    JointVec again;
+    ASSERT_TRUE(chain.ik(target, q, again));
+    EXPECT_LT((again - q).cwiseAbs().maxCoeff(), 1e-3);
+}
+
+TEST(ChainKinematics, AThreeJointLegKeepsTheSolutionNearestItsSeed) {
+    // Three joints have no spare: settling must not apply, so an exact seed comes straight back
+    const ChainKinematics chain(explorerRobot().legs[0]);
+    const JointVec q = angles({0.2, -0.4, 1.6});
+    JointVec solved;
+    ASSERT_TRUE(chain.ik(chain.fk(q), q, solved));
+    EXPECT_EQ(solved, q);
+}
