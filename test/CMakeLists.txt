@@ -19,6 +19,7 @@ set(GAIT_TESTS
   gait/test_foot_force
   gait/test_gait_engine
   gait/test_gait_schedule
+  gait/test_hexapod_leg_3dof
   gait/test_kinematics
   gait/test_leg_clearance
   gait/test_leg_odometry

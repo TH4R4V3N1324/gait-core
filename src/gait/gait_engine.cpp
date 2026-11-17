@@ -36,8 +36,8 @@ constexpr int LOG_SERVOS_OFF = 4;
 }  // namespace
 
 GaitEngine::GaitEngine(const GaitParams& params, const RobotGeometry& geometry)
-    : p(params), robot_geometry(geometry), trajectoryGen(geometry), config(geometry), ikSolver(geometry),
-      limits(geometry.limits), servo_power(params.power_on_startup) {
+    : p(params), robot_geometry(geometry), trajectoryGen(geometry), config(geometry),
+      limits(geometry.limits), ikSolver(geometry), servo_power(params.power_on_startup) {
     if (p.initial_mode >= NUM_MODES) {
         p.initial_mode = MODE_NORMAL;
     }
@@ -57,6 +57,32 @@ GaitEngine::GaitEngine(const GaitParams& params, const RobotGeometry& geometry)
     tilt_saved_feet.fill(Vec3::Zero());
     previous_feet.fill(Vec2::Zero());
     foot_forces.fill(Vec3::Zero());
+    // A default JointVec is empty, not zero: size every leg's command to its joint count
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+        output.joints[legNum] = JointVec::Zero(kinematics(legNum).numJoints());
+    }
+}
+
+/**
+ * @brief Use other kinematics for one leg, e.g. an analytic solver for a different leg design
+ * @param[in] leg The leg
+ * @param[in] kinematics Not owned, and must outlive the engine; null goes back to the built in
+ *            HexapodLeg3Dof. Ignored, with a warning, if its numJoints() is not 1..kMaxJointsPerLeg.
+ * @note Resets that leg's joint command to zeros of the new size, so set it before standing up.
+ *       Kept when servo power is cut.
+*/
+void GaitEngine::setLegKinematics(Leg leg, const LegKinematics* kinematics) {
+    if (leg >= NUM_LEGS) {
+        return;
+    }
+    if (kinematics != nullptr &&
+        (kinematics->numJoints() < 1 || kinematics->numJoints() > kMaxJointsPerLeg)) {
+        emit(LogLevel::Warn, "Leg %d kinematics ignored: %d joints, at most %d supported",
+             static_cast<int>(leg), kinematics->numJoints(), kMaxJointsPerLeg);
+        return;
+    }
+    legKinematics[leg] = kinematics;
+    output.joints[leg] = JointVec::Zero(this->kinematics(leg).numJoints());
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -152,16 +178,18 @@ bool GaitEngine::controllerImuFresh() const {
  * @brief Take a joint state: each foot's measured position, the foot forces and the leg odometry
  * @param[in] feedback The joint state
  * @return true if the leg odometry was updated
- * @note has_joint_states is only set once all 18 joints have been received
+ * @note has_joint_states is only set once every joint has been received. A leg whose angles
+ *       aren't sized to its kinematics' numJoints() counts as not received.
 */
 bool GaitEngine::onJointStates(const JointFeedback& feedback) {
     bool all_found = true;
     for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
-        if (!feedback.present[legNum]) {
+        const LegKinematics& leg = kinematics(legNum);
+        if (!feedback.present[legNum] || feedback.angles[legNum].size() != leg.numJoints()) {
             all_found = false;
             continue;
         }
-        measured_leg_positions[legNum] = ikSolver.solveFK(feedback.angles[legNum]);
+        measured_leg_positions[legNum] = leg.fk(feedback.angles[legNum]);
     }
     has_joint_states = all_found;
     full_state_since_update = full_state_since_update || all_found;
@@ -192,8 +220,8 @@ void GaitEngine::updateFootForces(const JointFeedback& feedback) {
     for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         foot_force_updated[legNum] = false;
         Vec3 legForce;
-        if (!ikSolver.groundForce(feedback.angles[legNum], feedback.effort[legNum], legForce)) {
-            continue;  // leg nearly straight: keep the last estimate
+        if (!kinematics(legNum).groundForce(feedback.angles[legNum], feedback.effort[legNum], legForce)) {
+            continue;  // leg nearly straight, or efforts the wrong size: keep the last estimate
         }
         // Rotate into the body frame (a direction, so without the coxa offset)
         Vec3 bodyForce = trajectoryGen.legToBody(legNum, legForce) - trajectoryGen.legToBody(legNum, Vec3::Zero());
@@ -429,8 +457,8 @@ CommandResult GaitEngine::sit(bool down) {
     if (down) {
         switch (sit_state) {
             case SitState::STANDING:
-                if (!reachable(Vec3(p.sit_reach, 0, -p.sit_height)) ||
-                    !reachable(Vec3(p.sit_reach, 0, stand_height))) {
+                if (!everyLegReaches(Vec3(p.sit_reach, 0, -p.sit_height)) ||
+                    !everyLegReaches(Vec3(p.sit_reach, 0, stand_height))) {
                     result.success = false;
                     setMessage(result, "sit_reach and sit_height put a foot out of reach");
                     emit(LogLevel::Warn, "Refused to sit: %s", result.message);
@@ -543,6 +571,10 @@ void GaitEngine::cutServoPower() {
     fresh.log = std::move(log);
     fresh.seatedChanged = std::move(seatedChanged);
     fresh.footholdPlanner = footholdPlanner;
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+        // Also sizes fresh.output.joints[legNum] for an override with a different joint count
+        fresh.setLegKinematics(static_cast<Leg>(legNum), legKinematics[legNum]);
+    }
     fresh.legOdometry = legOdometry;
     fresh.body_roll = body_roll;
     fresh.body_pitch = body_pitch;
@@ -682,8 +714,11 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
  *       Also records target as the leg's current position.
 */
 void GaitEngine::commandFoot(const Vec3& target, int legNum) {
-    output.joints[legNum] = ikSolver.solveIK(trajectoryGen.posedFoot(legNum, target, walk_level)
-        + Vec3(0, 0, foot_height_offset[legNum]));
+    // ik doesn't promise to read the seed before writing the result, so they can't be one vector.
+    // Out of reach gives the closest pose, as before; ik's flag is unused for now.
+    const JointVec seed = output.joints[legNum];
+    kinematics(legNum).ik(trajectoryGen.posedFoot(legNum, target, walk_level)
+        + Vec3(0, 0, foot_height_offset[legNum]), seed, output.joints[legNum]);
     current_leg_positions[legNum] = target;
 }
 
@@ -726,7 +761,7 @@ bool GaitEngine::startup(Scalar dt) {
         }
         // Into the seated pose, whatever pose the legs start in: the stand up from there is the same
         // as after a sit request
-        if (reachable(Vec3(p.sit_reach, 0, -p.sit_height)) && reachable(Vec3(p.sit_reach, 0, stand_height))) {
+        if (everyLegReaches(Vec3(p.sit_reach, 0, -p.sit_height)) && everyLegReaches(Vec3(p.sit_reach, 0, stand_height))) {
             config.setReach(p.sit_reach);
             config.setHeight(-p.sit_height);
             target_height = -p.sit_height;
@@ -821,12 +856,12 @@ std::array<Vec3, NUM_LEGS> GaitEngine::legTargets(Scalar ds) {
 Scalar GaitEngine::jointSpeedScale(const std::array<Vec3, NUM_LEGS>& targets, Scalar dt) {
     Scalar max_delta = 0;
     for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
-        const JointAngles from = ikSolver.solveIK(current_leg_positions[legNum]);
-        const JointAngles to = ikSolver.solveIK(targets[legNum]);
-        max_delta = std::max({max_delta,
-            std::abs(to.coxa - from.coxa),
-            std::abs(to.femur - from.femur),
-            std::abs(to.tibia - from.tibia)});
+        const LegKinematics& leg = kinematics(legNum);
+        JointVec from;
+        JointVec to;
+        leg.ik(current_leg_positions[legNum], output.joints[legNum], from);
+        leg.ik(targets[legNum], from, to);
+        max_delta = std::max(max_delta, (to - from).cwiseAbs().maxCoeff());
     }
     const Scalar allowed = p.max_joint_speed * dt;
     return (max_delta > allowed) ? allowed / max_delta : S(1.0);
@@ -1264,7 +1299,7 @@ bool GaitEngine::tiltFeasible(const BodyPose& pose, std::array<Vec3, NUM_LEGS>& 
         if (std::hypot(offset.x(), offset.y()) > config.maxStride) {
             return false;
         }
-        if (!reachable(targets[legNum])) {
+        if (!reachable(legNum, targets[legNum])) {
             return false;
         }
     }
@@ -1336,16 +1371,37 @@ void GaitEngine::updateLoadBalance(Scalar dt) {
 
 /**
  * @brief Whether a leg can put its foot at a target
+ * @param[in] legNum The leg
  * @param[in] target The foot position (leg frame)
  * @return true if IK lands the foot within 1 mm of the target with every joint inside its limits
+ * @note The limits are the coxa/femur/tibia ones from RobotGeometry, so a leg with any other
+ *       number of joints is never reachable until limits are per leg.
 */
-bool GaitEngine::reachable(const Vec3& target) {
+bool GaitEngine::reachable(int legNum, const Vec3& target) const {
     constexpr Scalar REACH_TOLERANCE = S(1e-3);  // m
-    const JointAngles angles = ikSolver.solveIK(target);
-    return std::abs(angles.coxa) <= limits.coxaMax &&
-        angles.femur >= limits.femurMin && angles.femur <= limits.femurMax &&
-        angles.tibia >= limits.tibiaMin && angles.tibia <= limits.tibiaMax &&
-        (ikSolver.solveFK(angles) - target).norm() <= REACH_TOLERANCE;
+    const LegKinematics& leg = kinematics(legNum);
+    if (leg.numJoints() != HexapodLeg3Dof::kNumJoints) {
+        return false;
+    }
+    JointVec angles;
+    leg.ik(target, output.joints[legNum], angles);  // the result is judged below, not by ik's flag
+    return std::abs(angles(0)) <= limits.coxaMax &&
+        angles(1) >= limits.femurMin && angles(1) <= limits.femurMax &&
+        angles(2) >= limits.tibiaMin && angles(2) <= limits.tibiaMax &&
+        (leg.fk(angles) - target).norm() <= REACH_TOLERANCE;
+}
+
+/**
+ * @brief Whether every leg can put its foot at a target, e.g. a seated or standing pose
+ * @param[in] target The foot position (leg frame)
+*/
+bool GaitEngine::everyLegReaches(const Vec3& target) const {
+    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+        if (!reachable(legNum, target)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
@@ -1356,7 +1412,7 @@ bool GaitEngine::reachable(const Vec3& target) {
  * @return target, with its height above groundZ cut back as far as needed, but no lower than groundZ
 */
 Vec3 GaitEngine::limitSwingLift(int legNum, const Vec3& target, Scalar groundZ) {
-    auto fits = [&](const Vec3& foot) { return reachable(trajectoryGen.posedFoot(legNum, foot, walk_level)); };
+    auto fits = [&](const Vec3& foot) { return reachable(legNum, trajectoryGen.posedFoot(legNum, foot, walk_level)); };
     const Scalar lift = target.z() - groundZ;
     if (lift <= 0 || fits(target)) {
         return target;
@@ -1404,7 +1460,7 @@ void GaitEngine::updateWalkLeveling(Scalar dt) {
     auto fits = [&](Scalar scale) {
         const BodyPose pose = TrajectoryGenerator::rotationAbout(roll * scale, pitch * scale, pivot);
         for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
-            if (!reachable(trajectoryGen.posedFoot(legNum, current_leg_positions[legNum], pose))) {
+            if (!reachable(legNum, trajectoryGen.posedFoot(legNum, current_leg_positions[legNum], pose))) {
                 return false;
             }
         }

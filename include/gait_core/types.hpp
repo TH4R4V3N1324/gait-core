@@ -2,8 +2,13 @@
 #define GAIT_CORE__TYPES_HPP
 
 #include <cstdint>
-
 #include <Eigen/Dense>
+
+#ifndef GAIT_CORE_MAX_JOINTS
+#define GAIT_CORE_MAX_JOINTS 6
+#endif
+
+static_assert(GAIT_CORE_MAX_JOINTS > 0, "GAIT_CORE_MAX_JOINTS must be a positive integer");
 
 /**
  * Scalar type used throughout the core. Defaults to float, which the ESP32 has hardware for and
@@ -26,6 +31,13 @@ using Rotation2D = Eigen::Rotation2D<Scalar>;
 
 // M_PI is not standard C++ (MSVC and some embedded toolchains hide it)
 inline constexpr Scalar kPi = static_cast<Scalar>(3.14159265358979323846);
+
+// The maximum number of joints per leg, which is used to size fixed-size Eigen matrices. The
+// actual number of joints per leg is a runtime parameter, but it must be <= this value
+inline constexpr int kMaxJointsPerLeg = GAIT_CORE_MAX_JOINTS;
+
+using JointVec = Eigen::Matrix<Scalar, Eigen::Dynamic, 1, Eigen::ColMajor, kMaxJointsPerLeg, 1>;
+using LegJacobian = Eigen::Matrix<Scalar, 3, Eigen::Dynamic, Eigen::ColMajor, 3, kMaxJointsPerLeg>;
 
 /**
  * @brief A point in time, in nanoseconds from any fixed origin (ROS time, or micros() * 1000)

@@ -6,7 +6,7 @@
 #include <functional>
 
 #include "gait_core/gait_config.hpp"
-#include "gait_core/kinematic_solver.hpp"
+#include "gait_core/hexapod_leg_3dof.hpp"
 #include "gait_core/leg_odometry.hpp"
 #include "gait_core/robot_geometry.hpp"
 #include "gait_core/trajectory_generator.hpp"
@@ -95,13 +95,21 @@ enum class SitState : uint8_t {
 
 /**
  * @brief Measured joint state of every leg
+ * @note Each leg's vectors start as HexapodLeg3Dof::kNumJoints zeros. A default JointVec is
+ *       empty, not zero, so they must never be left default-constructed. A leg whose angles
+ *       don't have its kinematics' numJoints() entries is treated as not reported.
 */
 struct JointFeedback {
     Timestamp stamp = 0;
-    std::array<JointAngles, NUM_LEGS> angles{};  // rad, indexed by Leg
-    std::array<bool, NUM_LEGS> present{};        // which legs' three joints were all reported
+    std::array<JointVec, NUM_LEGS> angles;           // rad, indexed by Leg, body to foot
+    std::array<bool, NUM_LEGS> present{};            // which legs' joints were all reported
     bool hasEffort = false;                          // whether effort is filled in
-    std::array<Vec3, NUM_LEGS> effort{};         // N m (coxa, femur, tibia) the servos apply
+    std::array<JointVec, NUM_LEGS> effort;           // N m the servos apply, same order as angles
+
+    JointFeedback() {
+        angles.fill(JointVec::Zero(HexapodLeg3Dof::kNumJoints));
+        effort.fill(JointVec::Zero(HexapodLeg3Dof::kNumJoints));
+    }
 };
 
 /**
@@ -127,8 +135,11 @@ struct CommandResult {
 */
 struct GaitOutput {
     bool commanded = false;                           // false while waiting for joint states or unpowered
-    std::array<JointAngles, NUM_LEGS> joints{};  // rad, indexed by Leg
+    std::array<JointVec, NUM_LEGS> joints;            // rad, indexed by Leg, body to foot
     bool servoPower = false;                          // whether the servos should be powered (drive SERVO_EN from this)
+
+    // Zeros, never empty; the engine resizes each leg to its kinematics' numJoints()
+    GaitOutput() { joints.fill(JointVec::Zero(HexapodLeg3Dof::kNumJoints)); }
 };
 
 /**
@@ -235,14 +246,22 @@ public:
     std::function<void(LogLevel, const char*)> log;           // optional
     std::function<void(bool seated)> seatedChanged;         // optional: a sit or stand began or ended
     FootholdPlanner* footholdPlanner = nullptr;             // optional, not owned
+    void setLegKinematics(Leg leg, const LegKinematics* kinematics);  // not owned; null = built in
 
 private:
     GaitParams p;
     RobotGeometry robot_geometry;   // kept so cutting servo power can rebuild the engine
     TrajectoryGenerator trajectoryGen;
     GaitConfig config;
-    KinematicSolver ikSolver;
     JointLimits limits;
+
+    // Every leg's kinematics. A null entry means ikSolver, rather than a pointer to it, so copying
+    // or moving the engine (cutServoPower does) can never leave a pointer into the old engine.
+    HexapodLeg3Dof ikSolver;
+    std::array<const LegKinematics*, NUM_LEGS> legKinematics{};
+    const LegKinematics& kinematics(int legNum) const {
+        return legKinematics[legNum] != nullptr ? *legKinematics[legNum] : ikSolver;
+    }
 
     VelocityCommand velocity{};
     Timestamp now_ = 0;
@@ -382,7 +401,8 @@ private:
     bool forcesValid();
     void adaptToTerrain(Scalar dt);
     void updateLoadBalance(Scalar dt);
-    bool reachable(const Vec3& target);
+    bool reachable(int legNum, const Vec3& target) const;
+    bool everyLegReaches(const Vec3& target) const;
     Vec3 limitSwingLift(int legNum, const Vec3& target, Scalar groundZ);
     void updateWalkLeveling(Scalar dt);
     bool tiltFeasible(const BodyPose& pose, std::array<Vec3, NUM_LEGS>& targets);

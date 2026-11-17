@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <memory>
 #include <string>
 
 #include "test_common.hpp"
@@ -12,6 +13,7 @@ using gait_core::GaitOutput;
 using gait_core::GaitParams;
 using gait_core::ImuSample;
 using gait_core::JointFeedback;
+using gait_core::JointVec;
 using gait_core::NUM_LEGS;
 using gait_core::Scalar;
 using gait_core::SitState;
@@ -40,7 +42,7 @@ public:
         // Legs laid out flat at their zeros
         for (int leg = 0; leg < NUM_LEGS; ++leg) {
             feedback.present[leg] = true;
-            feedback.angles[leg] = {0, 0, 0};
+            feedback.angles[leg] = JointVec::Zero(3);
         }
     }
 
@@ -49,7 +51,7 @@ public:
     */
     void collapse() {
         for (int leg = 0; leg < NUM_LEGS; ++leg) {
-            feedback.angles[leg] = {0, 0, 0};
+            feedback.angles[leg] = JointVec::Zero(3);
         }
     }
 
@@ -186,7 +188,7 @@ TEST(GaitEngine, PowerDownSitsThenTurnsTheServosOff) {
     robot.run(8.0);
     EXPECT_FALSE(robot.servoPower);
     EXPECT_TRUE(robot.engine.seated());
-    EXPECT_NEAR(gait_core::KinematicSolver().solveFK(robot.feedback.angles[0]).z(), -robot.engine.params().sit_height, 1e-3)
+    EXPECT_NEAR(gait_core::HexapodLeg3Dof().fk(robot.feedback.angles[0]).z(), -robot.engine.params().sit_height, 1e-3)
         << "the servos went off with the robot seated";
 
     const int commanded = robot.commandedTicks;
@@ -260,10 +262,106 @@ TEST(GaitEngine, EveryCommandIsReachable) {
         robot.run(0.01);
         for (int leg = 0; leg < NUM_LEGS; ++leg) {
             const auto& q = robot.feedback.angles[leg];
-            ASSERT_TRUE(std::isfinite(q.coxa) && std::isfinite(q.femur) && std::isfinite(q.tibia)) << "leg " << leg;
-            EXPECT_LE(std::abs(q.coxa), 1.4 + 1e-6) << "leg " << leg;
-            EXPECT_GE(q.femur, -1.6 - 1e-6) << "leg " << leg;
-            EXPECT_LE(q.femur, 1.4 + 1e-6) << "leg " << leg;
+            ASSERT_TRUE(q.allFinite()) << "leg " << leg;
+            EXPECT_LE(std::abs(q(0)), 1.4 + 1e-6) << "leg " << leg;
+            EXPECT_GE(q(1), -1.6 - 1e-6) << "leg " << leg;
+            EXPECT_LE(q(1), 1.4 + 1e-6) << "leg " << leg;
         }
+    }
+}
+
+// ---- Per-leg kinematics (JointVec) -----------------------------------------------------------
+
+namespace {
+
+/**
+ * @brief The built in leg, counting how often the engine solves with it
+*/
+class CountingLeg : public gait_core::LegKinematics {
+public:
+    mutable int calls = 0;
+    int numJoints() const override { return leg.numJoints(); }
+    gait_core::Vec3 fk(const JointVec& q) const override { ++calls; return leg.fk(q); }
+    bool ik(const gait_core::Vec3& target, const JointVec& seed, JointVec& q) const override {
+        ++calls;
+        return leg.ik(target, seed, q);
+    }
+    gait_core::LegJacobian jacobian(const JointVec& q) const override { return leg.jacobian(q); }
+private:
+    gait_core::HexapodLeg3Dof leg;
+};
+
+}  // namespace
+
+TEST(GaitEngine, JointVectorsStartSizedAndZeroNotEmpty) {
+    // A default JointVec is empty, so a forgotten resize would hand callers zero-length vectors
+    const JointFeedback feedback;
+    const GaitOutput output;
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+        EXPECT_EQ(feedback.angles[leg], JointVec::Zero(3)) << "leg " << leg;
+        EXPECT_EQ(feedback.effort[leg], JointVec::Zero(3)) << "leg " << leg;
+        EXPECT_EQ(output.joints[leg], JointVec::Zero(3)) << "leg " << leg;
+    }
+    GaitEngine engine;
+    const GaitOutput first = engine.update(DT, DT_NS);
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+        EXPECT_EQ(first.joints[leg], JointVec::Zero(3)) << "leg " << leg;
+    }
+}
+
+TEST(GaitEngine, WrongSizedAnglesCountAsMissing) {
+    GaitEngine engine;
+    JointFeedback feedback;
+    feedback.present.fill(true);
+    feedback.angles[gait_core::LEG_REAR_LEFT] = JointVec::Zero(2);
+    engine.onJointStates(feedback);
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_FALSE(engine.update(DT, (i + 1) * DT_NS).commanded);
+    }
+}
+
+TEST(GaitEngine, PowerLossRebuildKeepsLegKinematicsAndJointSizes) {
+    const CountingLeg counting;   // outlives the robot, as setLegKinematics requires
+    Robot robot = standingRobot();
+    robot.engine.setLegKinematics(gait_core::LEG_FRONT_RIGHT, &counting);
+
+    // Sit and cut the servos: cutServoPower rebuilds the engine and moves it into place
+    ASSERT_TRUE(robot.engine.powerDown().success);
+    robot.run(8.5);
+    ASSERT_FALSE(robot.servoPower);
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+        EXPECT_EQ(robot.feedback.angles[leg].size(), 3) << "leg " << leg;
+    }
+
+    // Power up and stand: the override must still be in use, and every command finite and sized
+    const int callsBefore = counting.calls;
+    robot.engine.sit(false);
+    for (int i = 0; i < 200 && robot.engine.sitState() != SitState::STANDING; ++i) {
+        robot.run(0.1);   // up to 20 s to rise and gather the feet in
+    }
+    EXPECT_EQ(robot.engine.sitState(), SitState::STANDING);
+    EXPECT_GT(counting.calls, callsBefore) << "the rebuilt engine dropped the leg's kinematics";
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+        ASSERT_EQ(robot.feedback.angles[leg].size(), 3) << "leg " << leg;
+        EXPECT_TRUE(robot.feedback.angles[leg].allFinite()) << "leg " << leg;
+    }
+
+    // Null goes back to the built in leg
+    robot.engine.setLegKinematics(gait_core::LEG_FRONT_RIGHT, nullptr);
+    const int callsAfterReset = counting.calls;
+    robot.run(0.5);
+    EXPECT_EQ(counting.calls, callsAfterReset);
+}
+
+TEST(GaitEngine, CopiedEngineDoesNotUseTheOriginalsKinematics) {
+    // The built in leg is reached through a null entry, not a pointer to the engine's own member,
+    // so a copy keeps working after the original is gone
+    std::unique_ptr<Robot> original = std::make_unique<Robot>(standingRobot());
+    Robot copy = *original;
+    original.reset();
+    copy.engine.setVelocity({static_cast<Scalar>(0.05), 0, 0});
+    copy.run(2.0);
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+        EXPECT_TRUE(copy.feedback.angles[leg].allFinite()) << "leg " << leg;
     }
 }

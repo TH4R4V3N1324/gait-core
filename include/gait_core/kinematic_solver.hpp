@@ -28,7 +28,7 @@ public:
           femurLength(geometry.femurLength),
           tibiaLength(geometry.tibiaLength) {}
 
-    JointAngles solveIK(const Vec3& target, bool mirrored = false) const;
+    JointAngles solveIK(const Vec3& target, bool mirrored = false, bool* clamped = nullptr) const;
     Vec3 solveFK(const JointAngles& angles) const;
     Mat3 jacobian(const JointAngles& angles) const;
     bool groundForce(const JointAngles& angles, const Vec3& torques, Vec3& force) const;

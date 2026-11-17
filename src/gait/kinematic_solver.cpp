@@ -9,11 +9,19 @@ namespace gait_core {
  * @brief Inverse kinematics, calculates the joint angles based on the desired position
  * @param[in] target The desired position in 3D space (leg frame, X outward)
  * @param[in] mirrored Whether this is a mirrored leg (the left side)
+ * @param[out] clamped If not null, set to whether either acos argument had to be clamped, i.e. the
+ *             target was out of reach
  * @return The calculated joint angles
  * @note If the target is outside the workspace, angles are clamped to the nearest valid solution
 */
-JointAngles KinematicSolver::solveIK(const Vec3& target, bool mirrored) const {
-    auto clamp = [](Scalar v) { return std::max(Scalar(-1), std::min(Scalar(1), v)); };
+JointAngles KinematicSolver::solveIK(const Vec3& target, bool mirrored, bool* clamped) const {
+    bool anyClamped = false;
+    auto clamp = [&anyClamped](Scalar v) {
+        if (v < Scalar(-1) || v > Scalar(1)) {
+            anyClamped = true;
+        }
+        return std::max(Scalar(-1), std::min(Scalar(1), v));
+    };
 
     const Scalar a1 = coxaLength;
     const Scalar a2 = femurLength;
@@ -37,6 +45,9 @@ JointAngles KinematicSolver::solveIK(const Vec3& target, bool mirrored) const {
     const Scalar q3 = std::acos(clamp((r3 * r3 - a2 * a2 - a3 * a3) / (-2 * a2 * a3)));
     const Scalar tibiaAngle = kPi - q3;
 
+    if (clamped != nullptr) {
+        *clamped = anyClamped;
+    }
     return JointAngles{coxaAngle, femurAngle, tibiaAngle};
 }
 

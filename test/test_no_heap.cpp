@@ -38,7 +38,8 @@ using gait_core::GaitEngine;
 using gait_core::GaitOutput;
 using gait_core::ImuSample;
 using gait_core::JointFeedback;
-using gait_core::KinematicSolver;
+using gait_core::HexapodLeg3Dof;
+using gait_core::JointVec;
 using gait_core::LogLevel;
 using gait_core::NUM_LEGS;
 using gait_core::Scalar;
@@ -55,7 +56,7 @@ int logged = 0;
 class Robot {
 public:
     GaitEngine engine;
-    KinematicSolver ik;
+    HexapodLeg3Dof ik;
     Timestamp now = 1'000'000'000;
     JointFeedback feedback;
     bool imu = false;
@@ -64,7 +65,7 @@ public:
         engine.log = [](LogLevel, const char*) { ++logged; };
         for (int leg = 0; leg < NUM_LEGS; ++leg) {
             feedback.present[leg] = true;
-            feedback.angles[leg] = {0, 0, 0};
+            feedback.angles[leg] = JointVec::Zero(3);
         }
         feedback.hasEffort = true;
     }
@@ -97,7 +98,7 @@ private:
         Scalar footZ[NUM_LEGS];
         Scalar lowest = 1;
         for (int leg = 0; leg < NUM_LEGS; ++leg) {
-            footZ[leg] = ik.solveFK(feedback.angles[leg]).z();
+            footZ[leg] = ik.fk(feedback.angles[leg]).z();
             lowest = std::min(lowest, footZ[leg]);
         }
         int loaded = 0;

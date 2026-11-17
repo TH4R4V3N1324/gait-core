@@ -16,6 +16,7 @@ endif()
 option(GAIT_CORE_USE_DOUBLE "Use double instead of float for Scalar (the ROS build turns this on)" OFF)
 option(GAIT_CORE_BUNDLED_EIGEN "Always use third_party/eigen instead of looking for a system Eigen" OFF)
 option(GAIT_CORE_BUILD_TESTS "Build the GoogleTest suite" ${GAIT_CORE_TOP_LEVEL})
+set(GAIT_CORE_MAX_JOINTS 6 CACHE STRING "Maximum joints per leg (sizes the fixed-size joint arrays)")
 
 # ---------------------------------------------------------------------------
 # Eigen: use the system copy when there is one (ROS, so every package in the process shares one
@@ -50,6 +51,7 @@ endif()
 add_library(gait_core STATIC
   src/gait/gait_config.cpp
   src/gait/gait_engine.cpp
+  src/gait/hexapod_leg_3dof.cpp
   src/gait/kinematic_solver.cpp
   src/gait/leg_odometry.cpp
   src/gait/robot_geometry.cpp
@@ -63,6 +65,12 @@ target_include_directories(gait_core PUBLIC
 )
 target_link_libraries(gait_core PUBLIC ${GAIT_CORE_EIGEN_TARGET})
 target_compile_features(gait_core PUBLIC cxx_std_17)
+
+if(NOT GAIT_CORE_MAX_JOINTS MATCHES "^[1-9][0-9]*$")
+  message(FATAL_ERROR "GAIT_CORE_MAX_JOINTS must be a positive integer, got '${GAIT_CORE_MAX_JOINTS}'")
+endif()
+
+target_compile_definitions(gait_core PUBLIC GAIT_CORE_MAX_JOINTS=${GAIT_CORE_MAX_JOINTS})
 
 if(GAIT_CORE_USE_DOUBLE)
   target_compile_definitions(gait_core PUBLIC GAIT_CORE_SCALAR=double)
