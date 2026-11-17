@@ -23,7 +23,14 @@ bool GaitEngine::tiltFeasible(const BodyPose& pose, std::array<Vec3, kMaxLegs>& 
             return false;
         }
     }
-    return true;
+    // The centre of mass stays over the feet, judged in the frame the body stood in when tilt mode
+    // began (the feet don't move; the body is posed above them)
+    const Vec3 com = trajectoryGen.unposedBodyPoint(robot.centreOfMass, pose);
+    std::array<Vec2, kMaxLegs> feet;
+    for (int legNum = 0; legNum < numLegs(); ++legNum) {
+        feet[legNum] = trajectoryGen.legToBody(legNum, tilt_ground_feet[legNum]).head<2>();
+    }
+    return stabilityMargin(feet.data(), numLegs(), com.head<2>()) >= p.min_stability_margin;
 }
 
 /**

@@ -25,6 +25,10 @@ struct RobotDefinition {
 
     Scalar maxStride;     // m, furthest a foot moves from its neutral position
 
+    // m, body frame: where the robot's weight acts. The engine keeps it over the planted feet
+    // (see GaitParams::min_stability_margin). The body origin is a fair guess for a symmetric robot.
+    Vec3 centreOfMass = Vec3::Zero();
+
     // The gaits it can walk in, selected by index (the protocol's and ROS's gait id). Each must
     // time exactly numLegs legs; the engine won't move a robot with a gait it can't run.
     int numGaits = 0;                          // 1..kMaxGaits

@@ -34,8 +34,8 @@ controllers can use them too.
 
 | Header | Contents |
 | --- | --- |
-| `robot_definition.hpp` | `RobotDefinition`: the legs (`numLegs`, up to `GAIT_CORE_MAX_LEGS`), neutral stance, max stride and gaits |
-| `leg_definition.hpp` | `LegDefinition`: where the leg is mounted, its joint chain, the foot, and which solver to use (`LegSolver`) |
+| `robot_definition.hpp` | `RobotDefinition`: the legs (`numLegs`, up to `GAIT_CORE_MAX_LEGS`), neutral stance, max stride, centre of mass and gaits |
+| `leg_definition.hpp` | `LegDefinition`: where the leg is mounted, its joint chain, the foot, which solver to use (`LegSolver`), and its own `stanceOffset` from the shared stance |
 | `joint_definition.hpp` | `JointDefinition`: a revolute joint's origin, axis and limits |
 | `gait_pattern.hpp` | `GaitPattern`: a gait as a duty factor and per-leg offsets (`fromGroups` for groups that take turns); `GaitSchedule`, the phases the engine runs it as |
 
@@ -54,6 +54,7 @@ controllers can use them too.
 | `gait_engine.hpp` | `GaitEngine`: the whole gait (startup, walking, sit/stand, tilt mode, leveling, load balancing, terrain adaptation, leg odometry) for the `RobotDefinition` it's given. Feed it joint states, IMU and velocity; call `update(dt, now)` each tick for every leg's joint targets, and `servoPower` to drive a servo power switch (unpowered until the first stand with `power_on_startup` off; `powerDown()` sits then switches off; losing the servos switches off too). Settings in `GaitParams` |
 | `gait_config.hpp` | The robot's gaits and the current one, modes, neutral stance, height/reach |
 | `trajectory_generator.hpp` | Swing Béziers, stance lines, foot displacement, body pose |
+| `support_polygon.hpp` | `stabilityMargin`: how far a point (the centre of mass) is inside the convex hull of some planted feet. The engine refuses a robot whose gaits fall below `min_stability_margin` (unless `allow_unstable_gaits`), stops tilt-mode body shifts at it, and warns when walking leaves it. Judged in the body frame, so no IMU is needed |
 | `frame_converter.hpp` | Leg frame ↔ body frame |
 
 ### Estimation (`estimation/`)

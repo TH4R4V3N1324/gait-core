@@ -51,6 +51,12 @@ struct GaitParams {
     Scalar load_balance_gain = Scalar(0.0001);  // m/(N s), how fast a foot moves per newton of extra load
     Scalar load_balance_max = Scalar(0.02);     // m, largest height adjustment of a foot
 
+    // Static stability: the centre of mass over the planted feet, judged in the body frame (no IMU needed)
+    Scalar min_stability_margin = Scalar(0.01); // m, how far inside the planted feet's polygon the centre of
+                                                // mass must stay: in every gait's phases, and in tilt mode (live)
+    bool allow_unstable_gaits = false;  // run gaits that fall short of it, e.g. a quadruped trot; when off,
+                                        // a robot with one won't move
+
     // Uneven ground (live)
     bool terrain_adaptation = true;     // stop swings on early contact and reach down for missing ground
     Scalar touchdown_force = Scalar(3.0);       // N, vertical force that ends a swing in its second half
@@ -255,9 +261,16 @@ public:
     FootholdPlanner* footholdPlanner = nullptr;             // optional, not owned
     void setLegKinematics(int legNum, const LegKinematics* kinematics);  // not owned; null = built in
     int numLegs() const { return robot.numLegs; }
-    // Whether the engine can run every one of the robot's gaits on its legs (see GaitPattern::schedule).
-    // If not, it never moves and keeps the servos off.
-    bool robotSupported() const { return numLegs() > 0 && config.unrunnableGait() < 0; }
+    // m, how far the centre of mass stays inside the planted feet through a gait's phases, at the
+    // worst: at the feet's neutral stance, less maxStride for how far they sweep while walking.
+    // -infinity for a gait that can't run on the robot's legs or an unknown one.
+    Scalar gaitStabilityMargin(uint8_t gait) const;
+    // The first of the robot's gaits whose margin is below min_stability_margin, or -1 if none is
+    // (always -1 with allow_unstable_gaits)
+    int unstableGait() const;
+    // Whether the engine can run every one of the robot's gaits on its legs (see GaitPattern::schedule),
+    // and stably unless allowed otherwise. If not, it never moves and keeps the servos off.
+    bool robotSupported() const { return numLegs() > 0 && config.unrunnableGait() < 0 && unstableGait() < 0; }
     // The solver each leg uses (unless setLegKinematics overrides it): its definition's, except
     // that a leg asking for YawPitchPitch whose chain isn't that shape gets Chain
     LegSolver legSolver(int legNum) const { return leg_solver[legNum]; }
@@ -404,8 +417,12 @@ private:
     bool has_previous_feet = false;
 
     // Throttled log messages: when each was last sent
-    std::array<Timestamp, 6> last_throttled_log{};
-    std::array<bool, 6> throttled_log_sent{};
+    std::array<Timestamp, 7> last_throttled_log{};
+    std::array<bool, 7> throttled_log_sent{};
+
+    std::array<Scalar, kMaxGaits> gait_margin{};   // gaitStabilityMargin, worked out once
+    Scalar computeGaitMargin(uint8_t gait) const;
+    Scalar plantedMargin(const std::array<Vec3, kMaxLegs>& feet) const;
 
     void cutServoPower();
 

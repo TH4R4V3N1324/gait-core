@@ -4,11 +4,13 @@
 #define GAIT_CORE__SRC__LOCOMOTION__GAIT_ENGINE_INTERNAL_HPP
 
 #include "gait_core/locomotion/gait_engine.hpp"
+#include "gait_core/locomotion/support_polygon.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <limits>
 
 namespace gait_core {
 namespace engine_internal {
@@ -33,7 +35,8 @@ constexpr int LOG_SWING_LOWERED = 1;
 constexpr int LOG_TILT_LIMITED = 2;
 constexpr int LOG_INVALID_MODE = 3;
 constexpr int LOG_SERVOS_OFF = 4;
-constexpr int LOG_UNSUPPORTED_ROBOT = 5;  // last_throttled_log and throttled_log_sent hold 6 keys
+constexpr int LOG_UNSUPPORTED_ROBOT = 5;
+constexpr int LOG_UNSTABLE_STANCE = 6;  // last_throttled_log and throttled_log_sent hold 7 keys
 
 }  // namespace engine_internal
 }  // namespace gait_core

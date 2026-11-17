@@ -262,6 +262,17 @@ RobotDefinition walkingQuadruped() {
     return robot;
 }
 
+/**
+ * @brief Params that let the quadruped's trot and crawl run: neither keeps its centre of mass
+ *        inside its planted feet (see the GaitEngine stability tests), but these tests are about
+ *        scheduling another leg count, not balance
+*/
+gait_core::GaitParams unstableAllowed() {
+    gait_core::GaitParams params;
+    params.allow_unstable_gaits = true;
+    return params;
+}
+
 }  // namespace
 
 TEST(RobotGaits, AnUnknownGaitIsRefused) {
@@ -274,7 +285,7 @@ TEST(RobotGaits, AnUnknownGaitIsRefused) {
 }
 
 TEST(RobotGaits, AQuadrupedWithItsOwnGaitsIsSupported) {
-    const GaitEngine engine(gait_core::GaitParams{}, walkingQuadruped());
+    const GaitEngine engine(unstableAllowed(), walkingQuadruped());
     EXPECT_TRUE(engine.robotSupported());
     EXPECT_EQ(engine.gaitConfig().numGaits(), 2);
     EXPECT_STREQ(engine.gaitConfig().gaitName(1), "crawl");
@@ -291,7 +302,7 @@ TEST(RobotGaits, ARobotWithoutGaitsNeverMoves) {
 TEST(RobotGaits, AQuadrupedStandsAndTrots) {
     // A smoke test: the engine runs a four-legged robot through startup and a few seconds of trot
     // with every command finite and sized. How well it walks is for later steps.
-    GaitEngine engine(gait_core::GaitParams{}, walkingQuadruped());
+    GaitEngine engine(unstableAllowed(), walkingQuadruped());
     JointFeedback feedback;
     feedback.present.fill(true);
     int commanded = 0;

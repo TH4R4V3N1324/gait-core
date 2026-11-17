@@ -6,6 +6,7 @@
 
 #include "test_common.hpp"
 #include "gait_core/locomotion/gait_engine.hpp"
+#include "gait_core/locomotion/support_polygon.hpp"
 
 using gait_core::CommandResult;
 using gait_core::GaitEngine;
@@ -391,4 +392,119 @@ TEST(GaitEngine, EachLegStandsAtTheSharedStancePlusItsOffset) {
     const gait_core::Vec3 stance = robot.engine.gaitConfig().startPos;
     EXPECT_NEAR((leg.fk(robot.feedback.angles[LEG_FRONT_RIGHT]) - (stance + offset)).norm(), 0.0, 1e-3);
     EXPECT_NEAR((leg.fk(robot.feedback.angles[LEG_REAR_LEFT]) - stance).norm(), 0.0, 1e-3);
+}
+
+namespace {
+
+/**
+ * @brief A square quadruped with explorer's legs at the corners: legs 0..3 front right, rear right,
+ *        rear left, front left. Gait 0 trots (diagonal pairs), gait 1 crawls (one leg at a time).
+*/
+gait_core::RobotDefinition quadruped() {
+    using gait_core::kPi;
+    gait_core::RobotDefinition robot = explorerRobot();
+    const gait_core::LegDefinition leg = robot.legs[0];
+    const Scalar c = static_cast<Scalar>(0.12);
+    const Scalar yaws[4] = {-kPi / 4, -3 * kPi / 4, 3 * kPi / 4, kPi / 4};
+    const Scalar xs[4] = {c, -c, -c, c};
+    const Scalar ys[4] = {-c, -c, c, c};
+    robot.numLegs = 4;
+    for (int i = 0; i < 4; ++i) {
+        robot.legs[i] = leg;
+        robot.legs[i].mount = {yaws[i], gait_core::Vec3(xs[i], ys[i], 0)};
+    }
+    robot.numGaits = 2;
+    robot.gaits[0] = gait_core::GaitPattern::fromGroups("trot", {{0, 2}, {1, 3}});
+    robot.gaits[1] = gait_core::GaitPattern::fromGroups("crawl", {{1}, {0}, {2}, {3}});
+    return robot;
+}
+
+/**
+ * @brief How far the centre of mass is inside all of a robot's feet, from its commanded joints
+*/
+Scalar standingMargin(const Robot& robot, const gait_core::RobotDefinition& definition) {
+    std::array<gait_core::Vec2, gait_core::kMaxLegs> feet;
+    const gait_core::YawPitchPitchLeg leg{definition.legs[0]};
+    for (int i = 0; i < definition.numLegs; ++i) {
+        feet[i] = robot.engine.trajectory().legToBody(i, leg.fk(robot.feedback.angles[i])).head<2>();
+    }
+    return gait_core::stabilityMargin(feet.data(), definition.numLegs, definition.centreOfMass.head<2>());
+}
+
+}  // namespace
+
+TEST(GaitEngine, ExplorersGaitsAreAllStaticallyStable) {
+    const GaitEngine engine{GaitParams{}, explorerRobot()};
+    for (uint8_t gait = 0; gait < gait_core::explorer::NUM_GAITS; ++gait) {
+        // Even the tripod, the narrowest, keeps its centre of mass several centimetres in
+        EXPECT_GT(engine.gaitStabilityMargin(gait), 0.03) << engine.gaitConfig().gaitName(gait);
+    }
+    EXPECT_EQ(engine.unstableGait(), -1);
+    EXPECT_TRUE(engine.robotSupported());
+}
+
+TEST(GaitEngine, AQuadrupedsTrotAndCrawlAreRefusedUnlessAllowed) {
+    const GaitEngine strict{GaitParams{}, quadruped()};
+    // Two diagonal feet: the centre of mass is on their line, and a stride takes it off
+    EXPECT_NEAR(strict.gaitStabilityMargin(0), -0.06, tol(1e-6)) << "trot";
+    // Three corners of a square: the centre is on the diagonal too, without shifting the body
+    EXPECT_NEAR(strict.gaitStabilityMargin(1), -0.06, tol(1e-6)) << "crawl";
+    EXPECT_EQ(strict.unstableGait(), 0);
+    EXPECT_FALSE(strict.robotSupported());
+
+    GaitParams params;
+    params.allow_unstable_gaits = true;
+    const GaitEngine allowed{params, quadruped()};
+    EXPECT_EQ(allowed.unstableGait(), -1);
+    EXPECT_TRUE(allowed.robotSupported());
+}
+
+TEST(GaitEngine, AnUnstableRobotNeverMoves) {
+    Robot robot{GaitParams{}, quadruped()};
+    robot.run(1.0);
+    EXPECT_EQ(robot.commandedTicks, 0);
+}
+
+TEST(GaitEngine, TiltShiftStopsWhereTheCentreOfMassNearsTheEdgeOfTheFeet) {
+    // Centre of mass moved forward until it is 30 mm inside the standing feet: a 40 mm forward
+    // shift would take it past min_stability_margin (10 mm), so the shift has to stop short
+    gait_core::RobotDefinition definition = explorerRobot();
+    const GaitEngine neutral{GaitParams{}, definition};
+    std::array<gait_core::Vec2, gait_core::kMaxLegs> feet;
+    for (int i = 0; i < NUM_LEGS; ++i) {
+        feet[i] = neutral.trajectory().legToBody(i, neutral.gaitConfig().startPosition[i]).head<2>();
+    }
+    Scalar low = 0, high = static_cast<Scalar>(0.3);
+    for (int i = 0; i < 40; ++i) {
+        const Scalar mid = (low + high) / 2;
+        (gait_core::stabilityMargin(feet.data(), NUM_LEGS, gait_core::Vec2(mid, 0)) > static_cast<Scalar>(0.03) ? low : high) = mid;
+    }
+    definition.centreOfMass.x() = low;
+
+    GaitParams params;
+    params.allow_unstable_gaits = true;   // walking with it this far forward isn't safe; standing is
+    params.tilt_leveling = false;
+    Robot robot{params, definition};
+    robot.run(3.0);
+    robot.engine.sit(false);
+    robot.run(6.0);
+    ASSERT_EQ(robot.engine.sitState(), SitState::STANDING);
+    EXPECT_NEAR(standingMargin(robot, definition), 0.03, 1e-3);
+
+    ASSERT_TRUE(robot.engine.setMode(gait_core::MODE_TILT).success);
+    robot.run(1.0);   // tilt mode starts from neutral, so pose it once it has
+    robot.engine.setBodyPose(0, 0, 0, gait_core::Vec3(static_cast<Scalar>(0.04), 0, 0));
+    robot.run(3.0);
+    // Shifted forward, the feet are further back in the body frame, and the margin is what's left
+    EXPECT_NEAR(standingMargin(robot, definition), 0.01, 1e-3);
+}
+
+TEST(GaitEngine, TiltShiftGoesAllTheWayWhenTheFeetAllowIt) {
+    Robot robot = standingRobot();
+    const Scalar before = standingMargin(robot, explorerRobot());
+    ASSERT_TRUE(robot.engine.setMode(gait_core::MODE_TILT).success);
+    robot.run(1.0);   // tilt mode starts from neutral, so pose it once it has
+    robot.engine.setBodyPose(0, 0, 0, gait_core::Vec3(static_cast<Scalar>(0.04), 0, 0));
+    robot.run(3.0);
+    EXPECT_LT(standingMargin(robot, explorerRobot()), before - 0.03) << "most of the 40 mm shift happened";
 }

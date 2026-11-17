@@ -86,6 +86,9 @@ GaitEngine::GaitEngine(const GaitParams& params, const RobotDefinition& geometry
         // A default JointVec is empty, not zero: size every leg's command to its joint count
         output.joints[legNum] = JointVec::Zero(kinematics(legNum).numJoints());
     }
+    for (int gait = 0; gait < config.numGaits(); ++gait) {
+        gait_margin[gait] = computeGaitMargin(static_cast<uint8_t>(gait));
+    }
 }
 
 /**
@@ -187,6 +190,66 @@ bool GaitEngine::everyLegReaches(const Vec3& target) const {
         }
     }
     return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Static stability
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * @brief How far the centre of mass is inside some feet, all in the body frame and seen from above
+ * @param[in] feet Each leg's foot (leg frame); legs whose foot is NaN are left out, so callers mark
+ *            the ones in the air that way
+*/
+Scalar GaitEngine::plantedMargin(const std::array<Vec3, kMaxLegs>& feet) const {
+    std::array<Vec2, kMaxLegs> planted;
+    int count = 0;
+    for (int legNum = 0; legNum < numLegs(); ++legNum) {
+        if (feet[legNum].allFinite()) {
+            planted[count++] = trajectoryGen.legToBody(legNum, feet[legNum]).head<2>();
+        }
+    }
+    return stabilityMargin(planted.data(), count, robot.centreOfMass.head<2>());
+}
+
+/**
+ * @brief gaitStabilityMargin, worked out from the gait's schedule and the robot's neutral stance
+ * @note While walking every planted foot sweeps up to maxStride from neutral, so taking maxStride
+ *       off the neutral margin covers the worst a stride can do (feet translating together towards
+ *       the nearest edge).
+*/
+Scalar GaitEngine::computeGaitMargin(uint8_t gait) const {
+    const GaitSchedule schedule = config.getGaitConfig(gait);
+    if (schedule.empty()) {
+        return -std::numeric_limits<Scalar>::infinity();
+    }
+    Scalar worst = std::numeric_limits<Scalar>::infinity();
+    for (size_t phase = 0; phase < schedule.size(); ++phase) {
+        std::array<Vec3, kMaxLegs> feet;
+        for (int legNum = 0; legNum < numLegs(); ++legNum) {
+            feet[legNum] = schedule.swingsIn(legNum, phase)
+                ? Vec3::Constant(std::numeric_limits<Scalar>::quiet_NaN())
+                : config.startPosition[legNum];
+        }
+        worst = std::min(worst, plantedMargin(feet));
+    }
+    return worst - config.maxStride;
+}
+
+Scalar GaitEngine::gaitStabilityMargin(uint8_t gait) const {
+    return gait < config.numGaits() ? gait_margin[gait] : -std::numeric_limits<Scalar>::infinity();
+}
+
+int GaitEngine::unstableGait() const {
+    if (p.allow_unstable_gaits) {
+        return -1;
+    }
+    for (int gait = 0; gait < config.numGaits(); ++gait) {
+        if (gait_margin[gait] < p.min_stability_margin) {
+            return gait;
+        }
+    }
+    return -1;
 }
 
 }  // namespace gait_core

@@ -65,6 +65,7 @@ add_library(gait_core STATIC
   src/locomotion/gait_engine_terrain.cpp
   src/locomotion/gait_engine_tick.cpp
   src/locomotion/gait_engine_walk.cpp
+  src/locomotion/support_polygon.cpp
   src/locomotion/trajectory_generator.cpp
   src/estimation/leg_odometry.cpp
 )

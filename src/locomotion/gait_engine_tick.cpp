@@ -8,11 +8,20 @@ using namespace engine_internal;
 
 GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
     now_ = now;
-    // A leg count the gait schedules can't handle: never command, and keep the servos off
+    // A leg count the gait schedules can't handle, or a gait that would tip it over: never command,
+    // and keep the servos off
     if (!robotSupported()) {
         const int gait = config.unrunnableGait();
-        if (config.numGaits() == 0) {
-            emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error, "Robot has no gaits: it won't move");
+        if (numLegs() == 0 || config.numGaits() == 0) {
+            emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error, "Robot has no legs or no gaits: it won't move");
+        } else if (gait < 0) {
+            const int unstable = unstableGait();
+            emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error,
+                "Gait %d (%s) can leave the centre of mass %.0f mm from the edge of its feet, under "
+                "min_stability_margin (%.0f mm): it won't move. Set allow_unstable_gaits to run it anyway",
+                unstable, config.gaitName(static_cast<uint8_t>(unstable)),
+                static_cast<double>(gaitStabilityMargin(static_cast<uint8_t>(unstable)) * 1000),
+                static_cast<double>(p.min_stability_margin * 1000));
         } else {
             emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error,
                 "Gait %d (%s) can't run on this robot's %d legs: it won't move", gait, config.gaitName(static_cast<uint8_t>(gait)), numLegs());
@@ -138,6 +147,20 @@ void GaitEngine::sendFootTargets(const std::array<Vec3, kMaxLegs>& targets, Scal
         commandFoot(targetPos, legNum);
     }
     output.commanded = true;
+
+    // Only reported: the gaits' margins were checked up front and tilt mode keeps its own, so this
+    // means feet planted somewhere unexpected, or a gait allowed to be unstable
+    std::array<Vec3, kMaxLegs> planted = targets;
+    for (int legNum = 0; legNum < numLegs(); ++legNum) {
+        if (isSwinging(legNum)) {
+            planted[legNum] = Vec3::Constant(std::numeric_limits<Scalar>::quiet_NaN());
+        }
+    }
+    const Scalar margin = plantedMargin(planted);
+    if (margin < 0) {
+        emitThrottled(LOG_UNSTABLE_STANCE, 5, LogLevel::Warn,
+            "Centre of mass %.0f mm outside the planted feet: the robot may tip", static_cast<double>(-margin * 1000));
+    }
 }
 
 /**

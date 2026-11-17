@@ -25,6 +25,7 @@ set(GAIT_TESTS
   locomotion/test_foot_directions
   locomotion/test_gait_engine
   locomotion/test_leg_clearance
+  locomotion/test_support_polygon
   estimation/test_leg_odometry
 )
 set(BEHAVIOUR_TESTS
