@@ -174,10 +174,12 @@ void GaitEngine::tilt(Scalar dt, bool exiting) {
         tilt_saved_pitch = walk_level_pitch;
         tilt_saved_feet = current_leg_positions;
         for (int legNum = 0; legNum < numLegs(); ++legNum) {
-            tilt_ground_feet[legNum] = trajectoryGen.posedFoot(legNum, current_leg_positions[legNum], walk_level);
+            tilt_ground_feet[legNum] = trajectoryGen.posedFoot(legNum, current_leg_positions[legNum], walkPose());
         }
         current_leg_positions = tilt_ground_feet;
         walk_level = BodyPose{};
+        tilt_saved_sway = sway;   // the feet above were captured with it: tilt starts from there
+        sway = Vec2::Zero();
         body_pose_request = BodyPose{};
         tilt_command = BodyPose{};
         tilt_correction = BodyPose{};
@@ -288,6 +290,7 @@ void GaitEngine::tilt(Scalar dt, bool exiting) {
         walk_level = TrajectoryGenerator::rotationAbout(walk_level_roll, walk_level_pitch,
             Vec3(0, 0, config().currentHeight));
         current_leg_positions = tilt_saved_feet;
+        sway = tilt_saved_sway;
         phase = 0;
         phase_progress = 0;
         emit(LogLevel::Info, "Tilt mode finished, body back to neutral");

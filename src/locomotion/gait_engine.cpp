@@ -87,7 +87,15 @@ GaitEngine::GaitEngine(const GaitParams& params, const RobotDefinition& geometry
         output.joints[legNum] = JointVec::Zero(kinematics(legNum).numJoints());
     }
     for (int gait = 0; gait < config().numGaits(); ++gait) {
-        gait_margin[gait] = computeGaitMargin(static_cast<uint8_t>(gait));
+        // Sway only a gait that needs it and that it rescues; the rest keep the body where walking puts it
+        gait_margin[gait] = computeGaitMargin(static_cast<uint8_t>(gait), false);
+        if (p.body_sway && gait_margin[gait] < p.min_stability_margin) {
+            const Scalar swayed = computeGaitMargin(static_cast<uint8_t>(gait), true);
+            if (swayed >= p.min_stability_margin) {
+                gait_margin[gait] = swayed;
+                gait_sways[gait] = true;
+            }
+        }
     }
 }
 
@@ -198,10 +206,11 @@ bool GaitEngine::everyLegReaches(const Vec3& target) const {
 
 /**
  * @brief How far the centre of mass is inside some feet, all in the body frame and seen from above
- * @param[in] feet Each leg's foot (leg frame); legs whose foot is NaN are left out, so callers mark
- *            the ones in the air that way
+ * @param[in] feet Each leg's foot (leg frame, before the body's sway); legs whose foot is NaN are
+ *            left out, so callers mark the ones in the air that way
+ * @param[in] bodySway The body's sway over those feet, which carries the centre of mass with it
 */
-Scalar GaitEngine::plantedMargin(const std::array<Vec3, kMaxLegs>& feet) const {
+Scalar GaitEngine::plantedMargin(const std::array<Vec3, kMaxLegs>& feet, const Vec2& bodySway) const {
     std::array<Vec2, kMaxLegs> planted;
     int count = 0;
     for (int legNum = 0; legNum < numLegs(); ++legNum) {
@@ -209,16 +218,19 @@ Scalar GaitEngine::plantedMargin(const std::array<Vec3, kMaxLegs>& feet) const {
             planted[count++] = trajectoryGen.legToBody(legNum, feet[legNum]).head<2>();
         }
     }
-    return stabilityMargin(planted.data(), count, robot.centreOfMass.head<2>());
+    return stabilityMargin(planted.data(), count, robot.centreOfMass.head<2>() + bodySway);
 }
 
 /**
  * @brief gaitStabilityMargin, worked out from the gait's schedule and the robot's neutral stance
+ * @param[in] gait The gait
+ * @param[in] sway false: with the centre of mass where it is. true: with the body swayed to the
+ *            most stable point over each phase's feet.
  * @note While walking every planted foot sweeps up to maxStride from neutral, so taking maxStride
  *       off the neutral margin covers the worst a stride can do (feet translating together towards
  *       the nearest edge).
 */
-Scalar GaitEngine::computeGaitMargin(uint8_t gait) const {
+Scalar GaitEngine::computeGaitMargin(uint8_t gait, bool sway) const {
     const GaitSchedule schedule = config().getGaitConfig(gait);
     if (schedule.empty()) {
         return -std::numeric_limits<Scalar>::infinity();
@@ -231,9 +243,85 @@ Scalar GaitEngine::computeGaitMargin(uint8_t gait) const {
                 ? Vec3::Constant(std::numeric_limits<Scalar>::quiet_NaN())
                 : config().startPosition[legNum];
         }
-        worst = std::min(worst, plantedMargin(feet));
+        if (sway) {
+            std::array<Vec2, kMaxLegs> planted;
+            int count = 0;
+            for (int legNum = 0; legNum < numLegs(); ++legNum) {
+                if (feet[legNum].allFinite()) {
+                    planted[count++] = trajectoryGen.legToBody(legNum, feet[legNum]).head<2>();
+                }
+            }
+            Vec2 deepest;
+            worst = std::min(worst, deepestSupportPoint(planted.data(), count, deepest));
+        } else {
+            worst = std::min(worst, plantedMargin(feet, Vec2::Zero()));
+        }
     }
     return worst - config().maxStride;
+}
+
+/**
+ * @brief The pose the feet are commanded through while walking: leveling plus the body's sway
+*/
+BodyPose GaitEngine::walkPose() const {
+    BodyPose pose = walk_level;
+    pose.translation.x() += sway.x();
+    pose.translation.y() += sway.y();
+    return pose;
+}
+
+/**
+ * @brief Move the body over the feet planted in the current phase, if the gait sways
+ * @param[in] dt The time since the last tick (s)
+ * @param[in] idle No velocity command: with every foot down at a phase's start, the sway eases
+ *            back to zero
+ * @return Whether the phase should wait: at its start, until the body has swayed far enough over
+ *         the feet that stay down (min_stability_margin) for the next leg to lift. Gives up after
+ *         a phase's length, with a warning.
+ * @note The body sways at up to sway_speed towards the nearest point sway_margin inside the feet
+ *       that are down this phase, recomputed every tick since they slide back as the body walks.
+*/
+bool GaitEngine::updateSway(Scalar dt, bool idle) {
+    sway_holding = false;
+    if (!gaitSways(config().currentGait) || trajectoryGen.gaitState.config.empty()) {
+        return false;
+    }
+    std::array<Vec2, kMaxLegs> feet;
+    int count = 0;
+    for (int legNum = 0; legNum < numLegs(); ++legNum) {
+        if (!trajectoryGen.gaitState.config.swingsIn(legNum, phase)) {
+            feet[count++] = trajectoryGen.legToBody(legNum, current_leg_positions[legNum]).head<2>();
+        }
+    }
+    const Vec2 com = robot.centreOfMass.head<2>();   // body frame; over the ground it's com + sway
+    Vec2 goal = Vec2::Zero();
+    if (!(idle && phase_progress == 0)) {
+        Vec2 target;
+        nearestStablePoint(feet.data(), count, com + sway,
+                           std::max(p.sway_margin, p.min_stability_margin), target);
+        goal = target - com;
+    }
+    const Vec2 step = goal - sway;
+    const Scalar maxStep = p.sway_speed * dt;
+    sway += step.norm() > maxStep ? Vec2(step * (maxStep / step.norm())) : step;
+
+    if (idle || phase_progress > 0) {
+        sway_hold_time = 0;
+        return false;
+    }
+    if (stabilityMargin(feet.data(), count, com + sway) >= p.min_stability_margin) {
+        sway_hold_time = 0;
+        return false;
+    }
+    sway_hold_time += dt;
+    if (sway_hold_time > p.phase_duration) {
+        emitThrottled(LOG_SWAY_TIMEOUT, 5, LogLevel::Warn,
+            "Body couldn't sway over the planted feet in %.1f s: lifting the next leg anyway",
+            static_cast<double>(p.phase_duration));
+        return false;
+    }
+    sway_holding = true;
+    return true;
 }
 
 Scalar GaitEngine::gaitStabilityMargin(uint8_t gait) const {

@@ -20,6 +20,28 @@ namespace gait_core {
 */
 Scalar stabilityMargin(const Vec2* feet, int count, const Vec2& point);
 
+/**
+ * @brief The most stable point over some feet: the centre of the largest circle inside their polygon
+ * @param[in] feet The planted feet (x, y), as for stabilityMargin
+ * @param[in] count How many feet, 0..kMaxLegs
+ * @param[out] centre That point (unchanged with no feet)
+ * @return Its margin, the circle's radius: 0 for fewer than three feet not in a line, -infinity
+ *         with no feet
+*/
+Scalar deepestSupportPoint(const Vec2* feet, int count, Vec2& centre);
+
+/**
+ * @brief The point nearest to another that is at least a margin inside some feet
+ * @param[in] feet The planted feet (x, y), as for stabilityMargin
+ * @param[in] count How many feet, 0..kMaxLegs
+ * @param[in] point Where the centre of mass is now
+ * @param[in] margin m, how far inside the feet it should be
+ * @param[out] nearest point itself if it already has the margin, otherwise the closest point that
+ *             does; with no such point (the feet are too close together), the deepest point
+ * @return Whether a point with the margin exists
+*/
+bool nearestStablePoint(const Vec2* feet, int count, const Vec2& point, Scalar margin, Vec2& nearest);
+
 }  // namespace gait_core
 
 #endif  // GAIT_CORE__SUPPORT_POLYGON_HPP

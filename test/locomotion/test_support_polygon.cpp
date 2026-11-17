@@ -61,3 +61,56 @@ TEST(SupportPolygon, ACrawlTriangleOfASquareRobotJustReachesItsCentre) {
     EXPECT_NEAR(margin({v(0.1, 0.1), v(0.1, -0.1), v(-0.1, -0.1)}, v(0, 0)), 0.0, tol(1e-9));
     EXPECT_GT(margin({v(0.1, 0.1), v(0.1, -0.1), v(-0.1, -0.1)}, v(0.02, -0.02)), 0);
 }
+
+TEST(SupportPolygon, TheDeepestPointOfASquareIsItsCentre) {
+    Vec2 centre;
+    EXPECT_NEAR(gait_core::deepestSupportPoint(std::vector<Vec2>{v(-0.1, -0.1), v(0.1, -0.1), v(0.1, 0.1), v(-0.1, 0.1)}.data(), 4, centre),
+                0.1, tol(1e-9));
+    EXPECT_NEAR((centre - v(0, 0)).norm(), 0.0, tol(1e-9));
+}
+
+TEST(SupportPolygon, TheDeepestPointOfATriangleIsItsIncentre) {
+    // Right triangle with legs 0.3 and 0.4: inradius (a + b - c) / 2 = 0.1, centre 0.1 in from both legs
+    const std::vector<Vec2> triangle{v(0, 0), v(0.4, 0), v(0, 0.3)};
+    Vec2 centre;
+    EXPECT_NEAR(gait_core::deepestSupportPoint(triangle.data(), 3, centre), 0.1, tol(1e-9));
+    EXPECT_NEAR((centre - v(0.1, 0.1)).norm(), 0.0, tol(1e-9));
+    EXPECT_NEAR(stabilityMargin(triangle.data(), 3, centre), 0.1, tol(1e-9));
+}
+
+TEST(SupportPolygon, TwoFeetHaveNoDepth) {
+    Vec2 centre;
+    EXPECT_NEAR(gait_core::deepestSupportPoint(std::vector<Vec2>{v(0.1, 0.1), v(-0.1, -0.1)}.data(), 2, centre), 0.0, tol(1e-9));
+    EXPECT_NEAR(centre.norm(), 0.0, tol(1e-9));
+}
+
+TEST(SupportPolygon, NearestStablePointLeavesAStablePointAlone) {
+    const std::vector<Vec2> square{v(-0.1, -0.1), v(0.1, -0.1), v(0.1, 0.1), v(-0.1, 0.1)};
+    Vec2 nearest;
+    ASSERT_TRUE(gait_core::nearestStablePoint(square.data(), 4, v(0.03, 0.02), 0.05, nearest));
+    EXPECT_NEAR((nearest - v(0.03, 0.02)).norm(), 0.0, tol(1e-12));
+}
+
+TEST(SupportPolygon, NearestStablePointMovesStraightInFromAnEdge) {
+    // A crawl's support triangle with the centre of mass on its long edge: move it in by the margin,
+    // at right angles to that edge
+    const std::vector<Vec2> triangle{v(0.1, 0.1), v(0.1, -0.1), v(-0.1, -0.1)};
+    Vec2 nearest;
+    ASSERT_TRUE(gait_core::nearestStablePoint(triangle.data(), 3, v(0, 0), 0.02, nearest));
+    EXPECT_NEAR(stabilityMargin(triangle.data(), 3, nearest), 0.02, tol(1e-6));
+    EXPECT_NEAR((nearest - v(0.02 / std::sqrt(2.0), -0.02 / std::sqrt(2.0))).norm(), 0.0, tol(1e-9));
+}
+
+TEST(SupportPolygon, NearestStablePointFromOutsidePastACorner) {
+    const std::vector<Vec2> square{v(-0.1, -0.1), v(0.1, -0.1), v(0.1, 0.1), v(-0.1, 0.1)};
+    Vec2 nearest;
+    ASSERT_TRUE(gait_core::nearestStablePoint(square.data(), 4, v(0.3, 0.25), 0.02, nearest));
+    EXPECT_NEAR((nearest - v(0.08, 0.08)).norm(), 0.0, tol(1e-9)) << "the shrunk square's corner";
+}
+
+TEST(SupportPolygon, NearestStablePointWithTooLargeAMarginGivesTheDeepestPoint) {
+    const std::vector<Vec2> triangle{v(0, 0), v(0.4, 0), v(0, 0.3)};
+    Vec2 nearest;
+    EXPECT_FALSE(gait_core::nearestStablePoint(triangle.data(), 3, v(0.3, 0.2), 0.15, nearest));
+    EXPECT_NEAR((nearest - v(0.1, 0.1)).norm(), 0.0, tol(1e-9));
+}

@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "test_common.hpp"
 #include "gait_core/locomotion/gait_engine.hpp"
@@ -443,12 +445,12 @@ TEST(GaitEngine, ExplorersGaitsAreAllStaticallyStable) {
     EXPECT_TRUE(engine.robotSupported());
 }
 
-TEST(GaitEngine, AQuadrupedsTrotAndCrawlAreRefusedUnlessAllowed) {
+TEST(GaitEngine, AQuadrupedsTrotIsRefusedUnlessAllowed) {
     const GaitEngine strict{GaitParams{}, quadruped()};
-    // Two diagonal feet: the centre of mass is on their line, and a stride takes it off
+    // Two diagonal feet: the centre of mass is on their line, and a stride takes it off. Swaying
+    // can't help: two feet have no area to move over.
     EXPECT_NEAR(strict.gaitStabilityMargin(0), -0.06, tol(1e-6)) << "trot";
-    // Three corners of a square: the centre is on the diagonal too, without shifting the body
-    EXPECT_NEAR(strict.gaitStabilityMargin(1), -0.06, tol(1e-6)) << "crawl";
+    EXPECT_FALSE(strict.gaitSways(0));
     EXPECT_EQ(strict.unstableGait(), 0);
     EXPECT_FALSE(strict.robotSupported());
 
@@ -483,6 +485,7 @@ TEST(GaitEngine, TiltShiftStopsWhereTheCentreOfMassNearsTheEdgeOfTheFeet) {
 
     GaitParams params;
     params.allow_unstable_gaits = true;   // walking with it this far forward isn't safe; standing is
+    params.body_sway = false;             // nor is swaying: this is about tilt
     params.tilt_leveling = false;
     Robot robot{params, definition};
     robot.run(3.0);
@@ -520,4 +523,132 @@ TEST(GaitEngine, TrajectoriesFollowAHeightChange) {
     ASSERT_GT(std::abs(height - original), 0.02) << "the body moved to its new height";
     EXPECT_NEAR(robot.engine.trajectory().swingTarget(0, gait_core::Vec3::Zero()).z(), height, tol(1e-9));
     EXPECT_NEAR(robot.engine.trajectory().config().startPosition[0].z(), height, tol(1e-9));
+}
+
+// ---- Body sway ----------------------------------------------------------------------------------
+
+namespace {
+
+/**
+ * @brief quadruped() with only its crawl, so nothing else stops it walking
+*/
+gait_core::RobotDefinition crawlingQuadruped() {
+    gait_core::RobotDefinition robot = quadruped();
+    robot.numGaits = 1;
+    robot.gaits[0] = robot.gaits[1];
+    return robot;
+}
+
+/**
+ * @brief Sit then stand, waiting as long as it takes (a swaying gait gathers its feet slowly)
+*/
+bool standUp(Robot& robot) {
+    robot.run(3.0);
+    robot.engine.sit(false);
+    for (int i = 0; i < 200 && robot.engine.sitState() != SitState::STANDING; ++i) {
+        robot.run(0.1);
+    }
+    return robot.engine.sitState() == SitState::STANDING;
+}
+
+/**
+ * @brief Walk a robot and find how close its centre of mass came to the edge of its planted feet
+ *        while a foot was in the air
+ * @note From the commanded joints alone: a foot more than 1 cm above the lowest is in the air.
+*/
+Scalar leastMarginWhileStepping(Robot& robot, const gait_core::RobotDefinition& definition, double seconds) {
+    const gait_core::YawPitchPitchLeg leg{definition.legs[0]};
+    Scalar least = std::numeric_limits<Scalar>::infinity();
+    const int ticks = static_cast<int>(std::lround(seconds / 0.01));
+    for (int t = 0; t < ticks; ++t) {
+        robot.run(0.01);
+        std::array<gait_core::Vec3, gait_core::kMaxLegs> feet;
+        Scalar lowest = std::numeric_limits<Scalar>::infinity();
+        for (int i = 0; i < definition.numLegs; ++i) {
+            feet[i] = robot.engine.trajectory().legToBody(i, leg.fk(robot.feedback.angles[i]));
+            lowest = std::min(lowest, feet[i].z());
+        }
+        std::array<gait_core::Vec2, gait_core::kMaxLegs> planted;
+        int count = 0;
+        for (int i = 0; i < definition.numLegs; ++i) {
+            if (feet[i].z() < lowest + static_cast<Scalar>(0.01)) {
+                planted[count++] = feet[i].head<2>();
+            }
+        }
+        if (count < definition.numLegs) {
+            least = std::min(least, gait_core::stabilityMargin(planted.data(), count, definition.centreOfMass.head<2>()));
+        }
+    }
+    return least;
+}
+
+}  // namespace
+
+TEST(GaitEngine, AQuadrupedsCrawlSwaysToStayStable) {
+    // Corners of the square at 0.12 + 0.177 / sqrt(2) from the centre: each crawl triangle is half
+    // the square, whose largest circle has radius side * (2 - sqrt(2)) / 2. Less the stride.
+    const double side = 2 * (0.12 + 0.177 / std::sqrt(2.0));
+    const GaitEngine engine{GaitParams{}, quadruped()};
+    EXPECT_TRUE(engine.gaitSways(1));
+    EXPECT_NEAR(engine.gaitStabilityMargin(1), side * (2 - std::sqrt(2.0)) / 2 - 0.06, tol(1e-6));
+
+    GaitParams noSway;
+    noSway.body_sway = false;
+    const GaitEngine without{noSway, quadruped()};
+    EXPECT_FALSE(without.gaitSways(1));
+    EXPECT_NEAR(without.gaitStabilityMargin(1), -0.06, tol(1e-6)) << "the centre is on the diagonal";
+}
+
+TEST(GaitEngine, ExplorerNeverSways) {
+    Robot robot = standingRobot();
+    for (uint8_t gait = 0; gait < gait_core::explorer::NUM_GAITS; ++gait) {
+        EXPECT_FALSE(robot.engine.gaitSways(gait));
+    }
+    robot.engine.setVelocity({static_cast<Scalar>(0.1), 0, static_cast<Scalar>(0.2)});
+    robot.run(3.0);
+    EXPECT_EQ(robot.engine.bodySway(), gait_core::Vec2::Zero());
+}
+
+TEST(GaitEngine, ACrawlingQuadrupedKeepsItsCentreOfMassOverItsFeet) {
+    const gait_core::RobotDefinition definition = crawlingQuadruped();
+    Robot robot{GaitParams{}, definition};
+    ASSERT_TRUE(robot.engine.robotSupported());
+    std::vector<std::string> warnings;   // e.g. a sway that timed out, or the robot about to tip
+    robot.engine.log = [&](gait_core::LogLevel level, const char* message) {
+        if (level >= gait_core::LogLevel::Warn) {
+            warnings.emplace_back(message);
+        }
+    };
+    ASSERT_TRUE(standUp(robot));
+
+    robot.engine.setVelocity({static_cast<Scalar>(0.03), 0, 0});
+    const Scalar least = leastMarginWhileStepping(robot, definition, 12.0);
+    EXPECT_TRUE(warnings.empty()) << warnings.front();
+    EXPECT_GT(least, 0.01 - 0.002) << "every lift waited for the body to sway over the other three feet";
+    EXPECT_GT(robot.engine.odometry().x(), 0.05) << "and it still walked";
+}
+
+TEST(GaitEngine, WithoutSwayACrawlTipsTheCentreOfMassOffItsFeet) {
+    // The same walk with sway off, allowed to run: lifting a leg leaves the centre of mass on or
+    // past the diagonal of the other three
+    const gait_core::RobotDefinition definition = crawlingQuadruped();
+    GaitParams params;
+    params.body_sway = false;
+    params.allow_unstable_gaits = true;
+    Robot robot{params, definition};
+    ASSERT_TRUE(standUp(robot));
+    robot.engine.setVelocity({static_cast<Scalar>(0.03), 0, 0});
+    EXPECT_LT(leastMarginWhileStepping(robot, definition, 12.0), 0.005);
+}
+
+TEST(GaitEngine, SwayReturnsToCentreWhenTheRobotStops) {
+    const gait_core::RobotDefinition definition = crawlingQuadruped();
+    Robot robot{GaitParams{}, definition};
+    ASSERT_TRUE(standUp(robot));
+    robot.engine.setVelocity({static_cast<Scalar>(0.03), 0, 0});
+    robot.run(4.0);
+    EXPECT_GT(robot.engine.bodySway().norm(), 0.005) << "swaying while it crawls";
+    robot.engine.setVelocity({0, 0, 0});
+    robot.run(10.0);
+    EXPECT_LT(robot.engine.bodySway().norm(), 1e-6);
 }

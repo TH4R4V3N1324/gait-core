@@ -126,7 +126,7 @@ void GaitEngine::commandFoot(const Vec3& target, int legNum) {
     // ik doesn't promise to read the seed before writing the result, so they can't be one vector.
     // Out of reach gives the closest pose, as before; ik's flag is unused for now.
     const JointVec seed = output.joints[legNum];
-    kinematics(legNum).ik(trajectoryGen.posedFoot(legNum, target, walk_level)
+    kinematics(legNum).ik(trajectoryGen.posedFoot(legNum, target, walkPose())
         + Vec3(0, 0, foot_height_offset[legNum]), seed, output.joints[legNum]);
     current_leg_positions[legNum] = target;
 }
@@ -152,12 +152,12 @@ void GaitEngine::sendFootTargets(const std::array<Vec3, kMaxLegs>& targets, Scal
     // means feet planted somewhere unexpected, or a gait allowed to be unstable
     std::array<Vec3, kMaxLegs> planted = targets;
     for (int legNum = 0; legNum < numLegs(); ++legNum) {
-        if (isSwinging(legNum)) {
+        if (isSwinging(legNum) && phase_progress > 0) {   // at a phase's start it's still down
             planted[legNum] = Vec3::Constant(std::numeric_limits<Scalar>::quiet_NaN());
         }
     }
-    const Scalar margin = plantedMargin(planted);
-    if (margin < 0) {
+    const Scalar margin = plantedMargin(planted, sway);
+    if (margin < 0 && !sway_holding) {   // holding, the next leg is still down
         emitThrottled(LOG_UNSTABLE_STANCE, 5, LogLevel::Warn,
             "Centre of mass %.0f mm outside the planted feet: the robot may tip", static_cast<double>(-margin * 1000));
     }

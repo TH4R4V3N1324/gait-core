@@ -36,7 +36,8 @@ constexpr int LOG_TILT_LIMITED = 2;
 constexpr int LOG_INVALID_MODE = 3;
 constexpr int LOG_SERVOS_OFF = 4;
 constexpr int LOG_UNSUPPORTED_ROBOT = 5;
-constexpr int LOG_UNSTABLE_STANCE = 6;  // last_throttled_log and throttled_log_sent hold 7 keys
+constexpr int LOG_UNSTABLE_STANCE = 6;
+constexpr int LOG_SWAY_TIMEOUT = 7;  // last_throttled_log and throttled_log_sent hold 8 keys
 
 }  // namespace engine_internal
 }  // namespace gait_core

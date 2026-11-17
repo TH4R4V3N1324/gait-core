@@ -120,7 +120,8 @@ void GaitEngine::returnToStart(Scalar dt) {
         trajectoryGen.GenerateTrajectories(startPositions, current_leg_positions, current_leg_positions, phase);
     }
 
-    performLegStep(dt, false, false);
+    // Stepping back in lifts legs too: a gait that sways waits for the body to be over the others
+    performLegStep(dt, updateSway(dt, false), false);
 
     if (phase_progress >= 1) {
         return_counter++;
@@ -294,9 +295,13 @@ void GaitEngine::walk(Scalar dt) {
         swing_target[legNum] += step;
     }
 
+    // A gait that sways waits at a phase's start, every foot down, until the body is over the feet
+    // that stay down
+    const bool swayHold = updateSway(dt, velocityIdle);
+
     // Advance, slowing the whole gait if a joint would move faster than max_joint_speed
-    Scalar ds = velocityIdle ? S(0.0) : dt / current_phase_duration;
-    Scalar moveDt = velocityIdle ? S(0.0) : dt;
+    Scalar ds = (velocityIdle || swayHold) ? S(0.0) : dt / current_phase_duration;
+    Scalar moveDt = (velocityIdle || swayHold) ? S(0.0) : dt;
     auto targets = walkTargets(forward, left, yaw, ds, moveDt);
     const Scalar scale = jointSpeedScale(targets, dt);
     if (scale < 1) {
@@ -336,7 +341,7 @@ void GaitEngine::walk(Scalar dt) {
  * @return target, with its height above groundZ cut back as far as needed, but no lower than groundZ
 */
 Vec3 GaitEngine::limitSwingLift(int legNum, const Vec3& target, Scalar groundZ) {
-    auto fits = [&](const Vec3& foot) { return reachable(legNum, trajectoryGen.posedFoot(legNum, foot, walk_level)); };
+    auto fits = [&](const Vec3& foot) { return reachable(legNum, trajectoryGen.posedFoot(legNum, foot, walkPose())); };
     const Scalar lift = target.z() - groundZ;
     if (lift <= 0 || fits(target)) {
         return target;

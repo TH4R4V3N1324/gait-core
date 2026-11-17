@@ -56,6 +56,13 @@ struct GaitParams {
                                                 // mass must stay: in every gait's phases, and in tilt mode (live)
     bool allow_unstable_gaits = false;  // run gaits that fall short of it, e.g. a quadruped trot; when off,
                                         // a robot with one won't move
+    // Body sway: a gait whose planted feet can't hold the centre of mass where the body stands, but
+    // could with the body moved over them (e.g. a quadruped crawl), shifts the body sideways before
+    // each leg lifts. Gaits stable without it (a hexapod's) never sway.
+    bool body_sway = true;              // sway gaits that need it (startup); off, they count as unstable
+    Scalar sway_speed = Scalar(0.05);           // m/s, fastest the body sways (live)
+    Scalar sway_margin = Scalar(0.02);          // m, how far inside the feet swaying aims for, at least
+                                                // min_stability_margin, which a leg waits for (live)
 
     // Uneven ground (live)
     bool terrain_adaptation = true;     // stop swings on early contact and reach down for missing ground
@@ -263,8 +270,13 @@ public:
     int numLegs() const { return robot.numLegs; }
     // m, how far the centre of mass stays inside the planted feet through a gait's phases, at the
     // worst: at the feet's neutral stance, less maxStride for how far they sweep while walking.
+    // For a gait that sways, how far it could be with the body moved over the feet.
     // -infinity for a gait that can't run on the robot's legs or an unknown one.
     Scalar gaitStabilityMargin(uint8_t gait) const;
+    // Whether a gait sways the body to stay stable (see GaitParams::body_sway)
+    bool gaitSways(uint8_t gait) const { return gait < config().numGaits() && gait_sways[gait]; }
+    // m, the body's current sway (x, y), relative to where walking alone would put it
+    const Vec2& bodySway() const { return sway; }
     // The first of the robot's gaits whose margin is below min_stability_margin, or -1 if none is
     // (always -1 with allow_unstable_gaits)
     int unstableGait() const;
@@ -420,12 +432,22 @@ private:
     bool has_previous_feet = false;
 
     // Throttled log messages: when each was last sent
-    std::array<Timestamp, 7> last_throttled_log{};
-    std::array<bool, 7> throttled_log_sent{};
+    std::array<Timestamp, 8> last_throttled_log{};
+    std::array<bool, 8> throttled_log_sent{};
 
     std::array<Scalar, kMaxGaits> gait_margin{};   // gaitStabilityMargin, worked out once
-    Scalar computeGaitMargin(uint8_t gait) const;
-    Scalar plantedMargin(const std::array<Vec3, kMaxLegs>& feet) const;
+    std::array<bool, kMaxGaits> gait_sways{};      // gaitSways
+    Scalar computeGaitMargin(uint8_t gait, bool sway) const;
+    Scalar plantedMargin(const std::array<Vec3, kMaxLegs>& feet, const Vec2& bodySway) const;
+
+    // Body sway: the body's shift over the ground (x, y) on top of walking, added to walk_level
+    // when the feet are commanded. Stays zero for gaits that don't sway.
+    Vec2 sway = Vec2::Zero();
+    Vec2 tilt_saved_sway = Vec2::Zero();
+    Scalar sway_hold_time = 0;   // s the current phase has waited for the sway
+    bool sway_holding = false;   // waiting at a phase's start for the body to sway over the feet
+    BodyPose walkPose() const;
+    bool updateSway(Scalar dt, bool idle);
 
     void cutServoPower();
 
