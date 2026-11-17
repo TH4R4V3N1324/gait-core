@@ -8,7 +8,9 @@
 #include <new>
 #include <vector>
 
+#include "gait_core/chain_kinematics.hpp"
 #include "gait_core/gait_engine.hpp"
+#include "gait_core/robot_definition.hpp"
 #include "hexapod_behaviour/battery_monitor.hpp"
 
 namespace {
@@ -194,4 +196,24 @@ TEST(NoHeap, TheBatteryMonitorNeverAllocates) {
     EXPECT_EQ(worst, BatteryLevel::Critical);
     EXPECT_EQ(battery.level(), BatteryLevel::Ok);
     EXPECT_GE(logs, 3);
+}
+
+TEST(NoHeap, ChainKinematicsNeverAllocates) {
+    // Numerical IK on every tick of a leg with no analytic solver must stay off the heap too
+    const gait_core::ChainKinematics chain(gait_core::RobotDefinition::explorer().legs[0]);
+    JointVec q = JointVec::Zero(3);
+    q << Scalar(0.1), Scalar(-0.5), Scalar(1.5);
+    const long before = allocations.load();
+    Scalar reached = 0;
+    for (int i = 0; i < 200; ++i) {
+        const Vec3 target = Vec3(Scalar(0.17), Scalar(0.0005) * static_cast<Scalar>(i - 100), Scalar(-0.12));
+        JointVec next;
+        chain.ik(target, q, next);
+        q = next;
+        reached += chain.fk(q).norm() + chain.jacobian(q).norm();
+        Vec3 force;
+        chain.groundForce(q, q, force);
+    }
+    EXPECT_EQ(allocations.load() - before, 0) << "allocations in ChainKinematics";
+    EXPECT_GT(reached, 0);
 }

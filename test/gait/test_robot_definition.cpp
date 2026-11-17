@@ -38,10 +38,11 @@ RobotDefinition quadruped() {
     RobotDefinition robot = RobotDefinition::explorer();
     robot.numLegs = 4;
     const Scalar c = static_cast<Scalar>(0.1);
-    robot.legs[0] = {-kPi / 4, Vector3d(c, -c, 0)};
-    robot.legs[1] = {-3 * kPi / 4, Vector3d(-c, -c, 0)};
-    robot.legs[2] = {3 * kPi / 4, Vector3d(-c, c, 0)};
-    robot.legs[3] = {kPi / 4, Vector3d(c, c, 0)};
+    // Explorer's leg chains, on the corners of a square body
+    robot.legs[0].mount = {-kPi / 4, Vector3d(c, -c, 0)};
+    robot.legs[1].mount = {-3 * kPi / 4, Vector3d(-c, -c, 0)};
+    robot.legs[2].mount = {3 * kPi / 4, Vector3d(-c, c, 0)};
+    robot.legs[3].mount = {kPi / 4, Vector3d(c, c, 0)};
     return robot;
 }
 
@@ -72,7 +73,7 @@ TEST(RobotDefinition, QuadrupedLegsMapToTheirMounts) {
     const RobotDefinition robot = quadruped();
     const TrajectoryGenerator gen(robot);
     for (int leg = 0; leg < robot.numLegs; ++leg) {
-        const LegConfig& mount = robot.legs[leg];
+        const LegConfig& mount = robot.legs[leg].mount;
         // The coxa joint sits at the mount, and the leg's +x points along the mount's yaw
         EXPECT_NEAR((gen.legToBody(leg, Vector3d::Zero()) - mount.translation_offset).norm(), 0.0, tol(1e-9))
             << "leg " << leg;

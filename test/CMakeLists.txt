@@ -15,12 +15,14 @@ include(GoogleTest)
 # Each test is <folder>/<name>.cpp, linked against that folder's library
 set(GAIT_TESTS
   gait/test_body_pose
+  gait/test_chain_kinematics
   gait/test_foot_directions
   gait/test_foot_force
   gait/test_gait_engine
   gait/test_gait_schedule
   gait/test_hexapod_leg_3dof
   gait/test_kinematics
+  gait/test_leg_chain
   gait/test_leg_clearance
   gait/test_leg_odometry
   gait/test_robot_definition

@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "gait_core/types.hpp"
+#include "gait_core/leg_definition.hpp"
 
 namespace gait_core {
 
@@ -25,14 +26,6 @@ enum Leg : uint8_t {
 };
 
 /**
- * @brief Where a leg's coxa joint sits on the body
-*/
-struct LegConfig {
-    Scalar yaw;                // rad, rotation of the leg frame about the body z axis
-    Vec3 translation_offset;   // m, position of the coxa joint in the body frame
-};
-
-/**
  * @brief Range each joint can safely move through (rad)
 */
 struct JointLimits {
@@ -50,7 +43,7 @@ struct JointLimits {
 */
 struct RobotDefinition {
     int numLegs = 0;                         // 1..kMaxLegs
-    std::array<LegConfig, kMaxLegs> legs;    // indexed by leg number
+    std::array<LegDefinition, kMaxLegs> legs;    // indexed by leg number
 
     // Link lengths (m), shared by every leg. The tibia length is the straight line from the knee
     // axis to the foot.

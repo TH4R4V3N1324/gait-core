@@ -57,6 +57,7 @@ add_library(gait_core STATIC
   src/gait/leg_odometry.cpp
   src/gait/robot_definition.cpp
   src/gait/trajectory_generator.cpp
+  src/gait/chain_kinematics.cpp
 )
 add_library(gait_core::gait_core ALIAS gait_core)
 
