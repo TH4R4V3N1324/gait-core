@@ -29,11 +29,20 @@ Scalar distanceToSegment(const Vec2& point, const Vec2& a, const Vec2& b) {
  * @note Points in a line or repeated are dropped. count must be 1..kMaxLegs.
 */
 int convexHull(const Vec2* feet, int count, std::array<Vec2, 2 * kMaxLegs>& hull) {
+    count = std::min(count, kMaxLegs);
+    // By x then y. An insertion sort: at most kMaxLegs points, and std::sort here made GCC warn
+    // about indices it can't rule out
     std::array<Vec2, kMaxLegs> sorted;
-    std::copy(feet, feet + count, sorted.begin());
-    std::sort(sorted.begin(), sorted.begin() + count, [](const Vec2& a, const Vec2& b) {
-        return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y());
-    });
+    for (int i = 0; i < count; ++i) {
+        const Vec2 point = feet[i];
+        int j = i;
+        while (j > 0 && (point.x() < sorted[j - 1].x() ||
+                         (point.x() == sorted[j - 1].x() && point.y() < sorted[j - 1].y()))) {
+            sorted[j] = sorted[j - 1];
+            --j;
+        }
+        sorted[j] = point;
+    }
     int size = 0;
     for (int i = 0; i < count; ++i) {   // lower hull
         while (size >= 2 && cross(hull[size - 2], hull[size - 1], sorted[i]) <= 0) {

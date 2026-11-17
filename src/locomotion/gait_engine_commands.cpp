@@ -76,10 +76,16 @@ CommandResult GaitEngine::sit(bool down) {
     if (down) {
         switch (sit_state) {
             case SitState::STANDING:
-                if (!everyLegReaches(Vec3(p.sit_reach, 0, -p.sit_height)) ||
-                    !everyLegReaches(Vec3(p.sit_reach, 0, stand_height))) {
+                if (!everyLegReaches(Vec3(p.sit_reach, 0, -p.sit_height))) {
                     result.success = false;
                     setMessage(result, "sit_reach and sit_height put a foot out of reach");
+                    emit(LogLevel::Warn, "Refused to sit: %s", result.message);
+                    return result;
+                }
+                if (!everyLegReaches(Vec3(p.sit_reach, 0, stand_height))) {
+                    // e.g. a leg with two joints, whose reach and height go together
+                    result.success = false;
+                    setMessage(result, "a foot can't step out to sit_reach at the standing height, as sitting starts by doing");
                     emit(LogLevel::Warn, "Refused to sit: %s", result.message);
                     return result;
                 }

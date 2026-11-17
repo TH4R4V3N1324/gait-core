@@ -313,11 +313,15 @@ bool GaitEngine::updateSway(Scalar dt, bool idle) {
         sway_hold_time = 0;
         return false;
     }
+    // Keep waiting while the sway is getting there, however far it has to go; give up once it has
+    // arrived and still isn't stable (the goal can't be reached), or after a long while regardless
+    constexpr Scalar MAX_HOLD = S(5.0);   // s
     sway_hold_time += dt;
-    if (sway_hold_time > p.phase_duration) {
+    const Scalar remaining = (goal - sway).norm();
+    if ((remaining < S(1e-4) && sway_hold_time > p.phase_duration) || sway_hold_time > MAX_HOLD) {
         emitThrottled(LOG_SWAY_TIMEOUT, 5, LogLevel::Warn,
-            "Body couldn't sway over the planted feet in %.1f s: lifting the next leg anyway",
-            static_cast<double>(p.phase_duration));
+            "Body couldn't sway over the planted feet in %.1f s (%.0f mm short): lifting the next leg anyway",
+            static_cast<double>(sway_hold_time), static_cast<double>(remaining * 1000));
         return false;
     }
     sway_holding = true;
