@@ -2,11 +2,12 @@
 
 namespace gait_core {
 
-GaitConfig::GaitConfig(const RobotGeometry& geometry)
+GaitConfig::GaitConfig(const RobotDefinition& geometry)
     : currentHeight(geometry.standHeight),
       maxStride(geometry.maxStride),
       homePos(geometry.standReach, 0, 0),
-      startPos(geometry.standReach, 0, geometry.standHeight) {
+      startPos(geometry.standReach, 0, geometry.standHeight),
+      legCount(geometry.numLegs) {
     startPosition.fill(startPos);
 }
 
@@ -80,7 +81,7 @@ void GaitConfig::setMode(Mode mode) {
 void GaitConfig::setHeight(Scalar height) {
     currentHeight = height;
     startPos.z() = currentHeight;
-    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+    for (int leg = 0; leg < numLegs(); ++leg) {
         startPosition[leg] = startPos;
     }
 }
@@ -91,7 +92,7 @@ void GaitConfig::setHeight(Scalar height) {
 */
 void GaitConfig::setReach(Scalar reach) {
     startPos.x() = reach;
-    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+    for (int leg = 0; leg < numLegs(); ++leg) {
         startPosition[leg] = startPos;
     }
 }

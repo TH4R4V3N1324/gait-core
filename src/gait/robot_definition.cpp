@@ -1,9 +1,13 @@
-#include "gait_core/robot_geometry.hpp"
+#include "gait_core/robot_definition.hpp"
 
 namespace gait_core {
 
-RobotGeometry RobotGeometry::explorer() {
-    RobotGeometry g{};
+static_assert(kMaxLegs >= NUM_LEGS, "explorer() has 6 legs: GAIT_CORE_MAX_LEGS must be at least 6");
+
+RobotDefinition RobotDefinition::explorer() {
+    RobotDefinition g{};
+    g.numLegs = NUM_LEGS;
+
     g.coxaLength  = static_cast<Scalar>(0.063);
     g.femurLength = static_cast<Scalar>(0.100);
     g.tibiaLength = static_cast<Scalar>(0.186);

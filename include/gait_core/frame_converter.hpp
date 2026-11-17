@@ -4,7 +4,7 @@
 #include <array>
 #include <cmath>
 
-#include "gait_core/robot_geometry.hpp"
+#include "gait_core/robot_definition.hpp"
 #include "gait_core/types.hpp"
 
 namespace gait_core {
@@ -16,13 +16,13 @@ namespace gait_core {
 */
 class FrameConverter {
 public:
-    std::array<LegConfig, NUM_LEGS> legConfigs;   // indexed by Leg
+    std::array<LegConfig, kMaxLegs> legConfigs;   // indexed by leg number, 0..numLegs - 1
 
     /**
      * @brief Initialise the mounting configuration of each leg
      * @param[in] geometry The robot whose legs to use
     */
-    explicit FrameConverter(const RobotGeometry& geometry = RobotGeometry::explorer())
+    explicit FrameConverter(const RobotDefinition& geometry = RobotDefinition::explorer())
         : legConfigs(geometry.legs) {}
 
     /**

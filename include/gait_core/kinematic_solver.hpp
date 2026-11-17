@@ -1,7 +1,7 @@
 #ifndef GAIT_CORE__KINEMATIC_SOLVER_HPP
 #define GAIT_CORE__KINEMATIC_SOLVER_HPP
 
-#include "gait_core/robot_geometry.hpp"
+#include "gait_core/robot_definition.hpp"
 #include "gait_core/types.hpp"
 
 namespace gait_core {
@@ -23,7 +23,7 @@ private:
     Scalar femurLength;
     Scalar tibiaLength;
 public:
-    explicit KinematicSolver(const RobotGeometry& geometry = RobotGeometry::explorer())
+    explicit KinematicSolver(const RobotDefinition& geometry = RobotDefinition::explorer())
         : coxaLength(geometry.coxaLength),
           femurLength(geometry.femurLength),
           tibiaLength(geometry.tibiaLength) {}

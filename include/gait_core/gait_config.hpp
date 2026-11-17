@@ -6,13 +6,13 @@
 #include <cstdint>
 #include <initializer_list>
 
-#include "gait_core/robot_geometry.hpp"
+#include "gait_core/robot_definition.hpp"
 #include "gait_core/types.hpp"
 
 namespace gait_core {
 
 static constexpr int MAX_RESOLUTION = 50;
-// Explorer defaults; the stride actually used comes from RobotGeometry::maxStride
+// Explorer defaults; the stride actually used comes from RobotDefinition::maxStride
 static constexpr Scalar MAX_STRIDE_LENGTH = static_cast<Scalar>(0.06);  // m
 static constexpr Scalar LIFT_HEIGHT = static_cast<Scalar>(0.05);        // m
 
@@ -42,7 +42,7 @@ enum Mode : uint8_t {
 */
 struct GaitSchedule {
     uint8_t phases = 0;                           // phases in a cycle, 0 if not set up
-    std::array<uint8_t, NUM_LEGS> phaseOf{};  // phase each leg swings in, indexed by Leg
+    std::array<uint8_t, kMaxLegs> phaseOf{};  // phase each leg swings in, indexed by leg number
 
     size_t size() const { return phases; }
     bool empty() const { return phases == 0; }
@@ -88,7 +88,7 @@ public:
      * @brief Set up the neutral stance from the robot's geometry
      * @param[in] geometry The robot whose stance to use
     */
-    explicit GaitConfig(const RobotGeometry& geometry = RobotGeometry::explorer());
+    explicit GaitConfig(const RobotDefinition& geometry = RobotDefinition::explorer());
 
     /**
      * @brief Get the supported gaits
@@ -101,11 +101,13 @@ public:
     */
     const std::array<LocomotionOption, NUM_MODES>& getModes() const { return modes; }
 
+    int numLegs() const { return legCount; }
+
     Scalar currentHeight;
     Scalar maxStride;
     Vec3 homePos;
     Vec3 startPos;
-    std::array<Vec3, NUM_LEGS> startPosition;   // indexed by Leg
+    std::array<Vec3, kMaxLegs> startPosition;   // indexed by leg number, 0..numLegs - 1
     Gait currentGait = GAIT_TRIPOD;
     Mode currentMode = MODE_NORMAL;
     bool gaitChangeRequested = false;
@@ -117,6 +119,9 @@ public:
     void setMode(Mode mode);
     void setHeight(Scalar height);
     void setReach(Scalar reach);
+
+private:
+    int legCount;
 };
 
 }  // namespace gait_core

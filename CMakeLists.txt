@@ -17,6 +17,7 @@ option(GAIT_CORE_USE_DOUBLE "Use double instead of float for Scalar (the ROS bui
 option(GAIT_CORE_BUNDLED_EIGEN "Always use third_party/eigen instead of looking for a system Eigen" OFF)
 option(GAIT_CORE_BUILD_TESTS "Build the GoogleTest suite" ${GAIT_CORE_TOP_LEVEL})
 set(GAIT_CORE_MAX_JOINTS 6 CACHE STRING "Maximum joints per leg (sizes the fixed-size joint arrays)")
+set(GAIT_CORE_MAX_LEGS 6 CACHE STRING "Maximum legs per robot (sizes the fixed-size leg arrays)")
 
 # ---------------------------------------------------------------------------
 # Eigen: use the system copy when there is one (ROS, so every package in the process shares one
@@ -54,7 +55,7 @@ add_library(gait_core STATIC
   src/gait/hexapod_leg_3dof.cpp
   src/gait/kinematic_solver.cpp
   src/gait/leg_odometry.cpp
-  src/gait/robot_geometry.cpp
+  src/gait/robot_definition.cpp
   src/gait/trajectory_generator.cpp
 )
 add_library(gait_core::gait_core ALIAS gait_core)
@@ -71,6 +72,12 @@ if(NOT GAIT_CORE_MAX_JOINTS MATCHES "^[1-9][0-9]*$")
 endif()
 
 target_compile_definitions(gait_core PUBLIC GAIT_CORE_MAX_JOINTS=${GAIT_CORE_MAX_JOINTS})
+
+if(NOT GAIT_CORE_MAX_LEGS MATCHES "^[1-9][0-9]*$")
+  message(FATAL_ERROR "GAIT_CORE_MAX_LEGS must be a positive integer, got '${GAIT_CORE_MAX_LEGS}'")
+endif()
+
+target_compile_definitions(gait_core PUBLIC GAIT_CORE_MAX_LEGS=${GAIT_CORE_MAX_LEGS})
 
 if(GAIT_CORE_USE_DOUBLE)
   target_compile_definitions(gait_core PUBLIC GAIT_CORE_SCALAR=double)

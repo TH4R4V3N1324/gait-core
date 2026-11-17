@@ -4,6 +4,12 @@
 #include <cstdint>
 #include <Eigen/Dense>
 
+#ifndef GAIT_CORE_MAX_LEGS
+#define GAIT_CORE_MAX_LEGS 6
+#endif
+
+static_assert(GAIT_CORE_MAX_LEGS > 0, "GAIT_CORE_MAX_LEGS must be a positive integer");
+
 #ifndef GAIT_CORE_MAX_JOINTS
 #define GAIT_CORE_MAX_JOINTS 6
 #endif
@@ -35,6 +41,10 @@ inline constexpr Scalar kPi = static_cast<Scalar>(3.14159265358979323846);
 // The maximum number of joints per leg, which is used to size fixed-size Eigen matrices. The
 // actual number of joints per leg is a runtime parameter, but it must be <= this value
 inline constexpr int kMaxJointsPerLeg = GAIT_CORE_MAX_JOINTS;
+
+// The maximum number of legs, which sizes every per-leg array. The robot's actual leg count
+// (RobotDefinition::numLegs) is a runtime value, but it must be <= this value
+inline constexpr int kMaxLegs = GAIT_CORE_MAX_LEGS;
 
 using JointVec = Eigen::Matrix<Scalar, Eigen::Dynamic, 1, Eigen::ColMajor, kMaxJointsPerLeg, 1>;
 using LegJacobian = Eigen::Matrix<Scalar, 3, Eigen::Dynamic, Eigen::ColMajor, 3, kMaxJointsPerLeg>;

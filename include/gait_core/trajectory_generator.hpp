@@ -6,7 +6,7 @@
 
 #include "gait_core/frame_converter.hpp"
 #include "gait_core/gait_config.hpp"
-#include "gait_core/robot_geometry.hpp"
+#include "gait_core/robot_definition.hpp"
 #include "gait_core/types.hpp"
 
 namespace gait_core {
@@ -35,8 +35,8 @@ struct BodyPose {
 
 struct GaitState {
     GaitSchedule config;
-    std::array<SwingSpline, NUM_LEGS> swingSplines;
-    std::array<LineSpline, NUM_LEGS> stanceSplines;
+    std::array<SwingSpline, kMaxLegs> swingSplines;
+    std::array<LineSpline, kMaxLegs> stanceSplines;
 };
 
 class TrajectoryGenerator {
@@ -44,15 +44,15 @@ private:
     GaitConfig gaitConfig;
     FrameConverter converter;
 public:
-    explicit TrajectoryGenerator(const RobotGeometry& geometry = RobotGeometry::explorer())
+    explicit TrajectoryGenerator(const RobotDefinition& geometry = RobotDefinition::explorer())
         : gaitConfig(geometry), converter(geometry) {}
 
     GaitState gaitState;
 
     void GenerateTrajectories(
-        const std::array<Vec3, NUM_LEGS>& swingTargets,
-        const std::array<Vec3, NUM_LEGS>& stanceTargets,
-        const std::array<Vec3, NUM_LEGS>& currentPositions,
+        const std::array<Vec3, kMaxLegs>& swingTargets,
+        const std::array<Vec3, kMaxLegs>& stanceTargets,
+        const std::array<Vec3, kMaxLegs>& currentPositions,
         uint8_t currentPhase
     );
 

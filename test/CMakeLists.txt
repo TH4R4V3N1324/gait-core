@@ -23,6 +23,7 @@ set(GAIT_TESTS
   gait/test_kinematics
   gait/test_leg_clearance
   gait/test_leg_odometry
+  gait/test_robot_definition
 )
 set(BEHAVIOUR_TESTS
   behaviour/test_battery_monitor

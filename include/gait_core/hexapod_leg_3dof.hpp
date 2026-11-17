@@ -3,7 +3,7 @@
 
 #include "gait_core/kinematic_solver.hpp"
 #include "gait_core/leg_kinematics.hpp"
-#include "gait_core/robot_geometry.hpp"
+#include "gait_core/robot_definition.hpp"
 
 namespace gait_core {
 
@@ -17,7 +17,7 @@ class HexapodLeg3Dof : public LegKinematics {
 private:
     KinematicSolver solver;
 public:
-    explicit HexapodLeg3Dof(const RobotGeometry& geometry = RobotGeometry::explorer())
+    explicit HexapodLeg3Dof(const RobotDefinition& geometry = RobotDefinition::explorer())
         : solver(geometry) {}
 
     static constexpr int kNumJoints = 3;  // coxa, femur, tibia

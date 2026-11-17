@@ -35,18 +35,18 @@ void TrajectoryGenerator::EnsureGaitConfig() {
  * @param[in] currentPhase The gait phase whose legs swing
 */
 void TrajectoryGenerator::GenerateTrajectories(
-    const std::array<Vec3, NUM_LEGS>& swingTargets,
-    const std::array<Vec3, NUM_LEGS>& stanceTargets,
-    const std::array<Vec3, NUM_LEGS>& currentPositions,
+    const std::array<Vec3, kMaxLegs>& swingTargets,
+    const std::array<Vec3, kMaxLegs>& stanceTargets,
+    const std::array<Vec3, kMaxLegs>& currentPositions,
     uint8_t currentPhase
 ) {
-    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < gaitConfig.numLegs(); ++legNum) {
         gaitState.swingSplines[legNum].active = false;
         gaitState.stanceSplines[legNum].active = false;
     }
 
     // Swing: Bezier from the current foot position to the target
-    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < gaitConfig.numLegs(); ++legNum) {
         if (!gaitState.config.swingsIn(legNum, currentPhase)) continue;
         SwingSpline& spline = gaitState.swingSplines[legNum];
         const Vec3 start = currentPositions[legNum];
@@ -67,7 +67,7 @@ void TrajectoryGenerator::GenerateTrajectories(
     }
 
     // Stance: straight line from the current foot position to the target
-    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < gaitConfig.numLegs(); ++legNum) {
         if (gaitState.config.swingsIn(legNum, currentPhase)) continue;
         LineSpline& spline = gaitState.stanceSplines[legNum];
         spline.P0 = currentPositions[legNum];
@@ -217,7 +217,7 @@ Scalar TrajectoryGenerator::bodyRadius(int legNum) const {
 */
 Scalar TrajectoryGenerator::maxBodyRadius() const {
     Scalar radius = 0;
-    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < gaitConfig.numLegs(); ++legNum) {
         radius = std::max(radius, bodyRadius(legNum));
     }
     return radius;
