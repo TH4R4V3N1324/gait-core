@@ -1,34 +1,73 @@
-# hexapod-gait-core
+# legged-gait-core
 
-The hexapod gait and behaviours as plain C++17 libraries with no ROS, Arduino or Pico SDK
-dependency, so every robot walks and reacts to its sensors the same way. It also holds what every
-stack has to agree on to be driven the same way: the controller packets and the gamepad layout.
+A legged robot's gait and behaviours as plain C++17 libraries with no ROS, Arduino or Pico SDK
+dependency, so every robot walks and reacts to its sensors the same way. A robot is described as
+data (its legs as chains of joints, its stance and its gaits), so the same engine runs a hexapod or
+a quadruped. It also holds what every stack has to agree on to be driven the same way: the
+controller packets and the gamepad layout.
 
 How this fits with the robots and the other repositories is documented in
 [hexapod-docs](https://github.com/TH4R4V3N1324/hexapod-docs).
 
-## Contents
+## Layout
 
-Two libraries: the gait (`gait_core`, headers in `include/gait_core/`) and the behaviours built on
-it (`gait_core::behaviour`, headers in `include/hexapod_behaviour/`). The gait doesn't depend on
-the behaviours, so a robot can use the gait alone.
+Everything is under one include root and one namespace, `gait_core`, in a folder per area. `src/`
+and `test/` mirror the same folders.
 
-Two header-only ones with no dependencies at all (not even Eigen), so controllers can use them
-too: the controller packets (`gait_core::protocol`, `include/hexapod_protocol/`) and the gamepad
-layout (`gait_core::teleop`, `include/hexapod_teleop/`).
+| Folder (`include/gait_core/…`) | Namespace | CMake target | What |
+| --- | --- | --- | --- |
+| `types.hpp` | `gait_core` | `gait_core::gait_core` | Scalars, vectors, `JointVec`, time, logging |
+| `robot/` | `gait_core` | `gait_core::gait_core` | What a robot is: legs, joint chains, stance, gaits (data only) |
+| `kinematics/` | `gait_core` | `gait_core::gait_core` | Solving one leg: the `LegKinematics` interface and its solvers |
+| `locomotion/` | `gait_core` | `gait_core::gait_core` | Making the robot walk: the engine, gait timing, trajectories, frames |
+| `estimation/` | `gait_core` | `gait_core::gait_core` | What the robot measures: leg odometry |
+| `behaviour/` | `gait_core::behaviour` | `gait_core::behaviour` | Decisions from sensors, on top of the gait's types |
+| `robots/` | `gait_core::explorer`, … | `gait_core::robots` | Real robots' definitions. The core has none built in |
+| `protocol/` | (C) | `gait_core::protocol` | Controller ↔ robot packets. Header-only, no dependencies |
+| `teleop/` | `gait_core::teleop` | `gait_core::teleop` | The shared gamepad layout. Header-only, no dependencies |
 
-### Gait
+The gait doesn't depend on the behaviours or the robots, so a robot can use the gait alone with its
+own definition. The protocol and teleop headers need nothing at all (not even Eigen), so
+controllers can use them too.
+
+### Robot description (`robot/`)
 
 | Header | Contents |
 | --- | --- |
-| `gait_engine.hpp` | `GaitEngine`: the whole gait (startup, walking, sit/stand, tilt mode, leveling, load balancing, terrain adaptation, leg odometry). Feed it joint states, IMU and velocity; call `update(dt, now)` each tick for 18 joint targets, and `servoPower` to drive a servo power switch (unpowered until the first stand with `power_on_startup` off; `powerDown()` sits then switches off; losing the servos switches off too). Settings in `GaitParams` |
-| `types.hpp` | `Scalar`, `Vec2/Vec3/Mat3`, `kPi`, `Timestamp`, `LogLevel`, `VelocityCommand` |
-| `robot_geometry.hpp` | `Leg` enum; `RobotGeometry`: link lengths, coxa mounts, neutral stance, max stride, joint limits. Presets: `explorer()` |
-| `kinematic_solver.hpp` | Single-leg IK/FK, Jacobian, foot force from joint torques |
-| `frame_converter.hpp` | Leg frame ↔ body frame |
-| `gait_config.hpp` | Gaits, modes, neutral stance, height/reach |
+| `robot_definition.hpp` | `RobotDefinition`: the legs (`numLegs`, up to `GAIT_CORE_MAX_LEGS`), neutral stance, max stride and gaits |
+| `leg_definition.hpp` | `LegDefinition`: where the leg is mounted, its joint chain, the foot, and which solver to use (`LegSolver`) |
+| `joint_definition.hpp` | `JointDefinition`: a revolute joint's origin, axis and limits |
+| `gait_pattern.hpp` | `GaitPattern`: a gait as a duty factor and per-leg offsets (`fromGroups` for groups that take turns); `GaitSchedule`, the phases the engine runs it as |
+
+### Kinematics (`kinematics/`)
+
+| Header | Contents |
+| --- | --- |
+| `leg_kinematics.hpp` | `LegKinematics`: FK, IK from a seed, Jacobian, and foot force from joint torques, for any number of joints |
+| `chain_kinematics.hpp` | `ChainKinematics`: any `LegDefinition`, with exact FK/Jacobian and numerical IK (damped least squares) |
+| `yaw_pitch_pitch_leg.hpp` | `YawPitchPitchLeg`: exact analytic kinematics for a yaw joint then two pitch joints (coxa/femur/tibia) |
+| `kinematic_solver.hpp` | `KinematicSolver`: the original coxa/femur/tibia maths that `YawPitchPitchLeg` uses |
+
+### Locomotion (`locomotion/`)
+
+| Header | Contents |
+| --- | --- |
+| `gait_engine.hpp` | `GaitEngine`: the whole gait (startup, walking, sit/stand, tilt mode, leveling, load balancing, terrain adaptation, leg odometry) for the `RobotDefinition` it's given. Feed it joint states, IMU and velocity; call `update(dt, now)` each tick for every leg's joint targets, and `servoPower` to drive a servo power switch (unpowered until the first stand with `power_on_startup` off; `powerDown()` sits then switches off; losing the servos switches off too). Settings in `GaitParams` |
+| `gait_config.hpp` | The robot's gaits and the current one, modes, neutral stance, height/reach |
 | `trajectory_generator.hpp` | Swing Béziers, stance lines, foot displacement, body pose |
+| `frame_converter.hpp` | Leg frame ↔ body frame |
+
+### Estimation (`estimation/`)
+
+| Header | Contents |
+| --- | --- |
 | `leg_odometry.hpp` | Body motion and climb from planted feet |
+
+### Robots (`robots/`)
+
+| Header | Contents |
+| --- | --- |
+| `explorer.hpp` | Explorer, a hexapod: `gait_core::explorer::robot()`, and names for its legs (`LEG_FRONT_RIGHT` …) and gaits (`GAIT_TRIPOD`, `GAIT_RIPPLE`, `GAIT_WAVE`) |
 
 ### Behaviours
 
@@ -48,10 +87,11 @@ well as C++, since some controller firmware is C.
 
 | Header | Contents |
 | --- | --- |
-| `packets.h` | `ControlPacket` (sticks, tilt yaw and height, optional controller orientation hold), `HexPacket` (height, gait, mode, seated / servo power / feature flags, calibration offsets), `Command`, `Gait`, `Mode` and `GaitFeature`. Both start with `HEXAPOD_PROTOCOL_VERSION` (3); a receiver drops any other version |
+| `packets.h` | `ControlPacket` (sticks, tilt yaw and height, optional controller orientation hold), `HexPacket` (height, gait, mode, seated / servo power / feature flags, how many gaits the robot has, calibration offsets for up to `HEXAPOD_MAX_JOINTS_PER_LEG` joints), `Command`, `Gait`, `Mode` and `GaitFeature`. Both start with `HEXAPOD_PROTOCOL_VERSION` (4); a receiver drops any other version |
 
-`Gait` and `Mode` equal the engine's values (checked in the tests). To change the layout, bump the
-version and the size checks, and append rather than reorder enum values.
+A gait is an index into the robot's gait list (`HexPacket.numGaits` of them); the `Gait` names are
+explorer's, and `Mode` equals the engine's values (both checked in the tests). To change the
+layout, bump the version and the size checks, and append rather than reorder enum values.
 
 ### Teleop
 
@@ -79,17 +119,20 @@ The layout, used by hexapod-ros2's `controller_teleop` and hexapod-controller's 
 - SI units: metres, radians, seconds.
 - Body frame as in [Coordinate frames](https://github.com/TH4R4V3N1324/hexapod-docs/blob/main/docs/concepts/frames.md).
   Each leg frame has +X pointing out along the leg from its coxa joint.
-- Per-leg arrays have `NUM_LEGS` entries indexed by the `Leg` enum, which runs clockwise from
-  `LEG_FRONT_RIGHT` (0) to `LEG_FRONT_LEFT` (5). The hardware and URDF names count from 1
+- Legs are numbered `0 .. numLegs - 1` in the robot's definition, and per-leg arrays have room
+  for `kMaxLegs` (`GAIT_CORE_MAX_LEGS`). Joint angles are a `JointVec` per leg, body to foot, with
+  room for `kMaxJointsPerLeg` (`GAIT_CORE_MAX_JOINTS`); nothing allocates on the heap.
+- Explorer's legs run clockwise from `explorer::LEG_FRONT_RIGHT` (0) to `explorer::LEG_FRONT_LEFT`
+  (5). The hardware and URDF names count from 1
   (see [Legs](https://github.com/TH4R4V3N1324/hexapod-docs/blob/main/docs/concepts/legs.md)),
-  so `Leg` 0 is `leg1`.
+  so leg 0 is `leg1`.
 - Callers convert to and from other units or frames at their own edges, never inside the core.
 
 ## Building and testing
 
 ```sh
-git clone --recursive https://github.com/TH4R4V3N1324/hexapod-gait-core.git
-cd hexapod-gait-core
+git clone --recursive https://github.com/TH4R4V3N1324/legged-gait-core.git
+cd legged-gait-core
 cmake -S . -B build
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
@@ -104,6 +147,8 @@ GoogleTest is used from the system if installed, otherwise downloaded.
 | `GAIT_CORE_USE_DOUBLE` | `OFF` | Make `Scalar` `double` instead of `float` |
 | `GAIT_CORE_BUNDLED_EIGEN` | `OFF` | Always use `third_party/eigen`, even if a system Eigen is found. Always on when cross-compiling |
 | `GAIT_CORE_BUILD_TESTS` | `ON` when top-level | Build the test suite |
+| `GAIT_CORE_MAX_LEGS` | `6` | Most legs a robot can have (sizes every per-leg array). Explorer needs 6 |
+| `GAIT_CORE_MAX_JOINTS` | `6` | Most joints in one leg (sizes `JointVec`). The protocol carries up to 6 |
 
 `Scalar` defaults to `float` because the microcontroller targets have no or single-precision
 FPUs. CI runs the tests with both `float` and `double`, and cross-compiles for Cortex-M0+.
@@ -111,7 +156,7 @@ FPUs. CI runs the tests with both `float` and `double`, and cross-compiles for C
 ## Linking
 
 - **CMake subproject:** `add_subdirectory(path/to/gait_core)` then link `gait_core::gait_core`,
-  `gait_core::behaviour`, `gait_core::protocol` and/or `gait_core::teleop`.
+  `gait_core::behaviour`, `gait_core::robots`, `gait_core::protocol` and/or `gait_core::teleop`.
 - **Installed package (e.g. colcon):** `find_package(gait_core REQUIRED)` then link the same
   targets. `package.xml` lets colcon build it as a plain CMake package.
 - **PlatformIO:** `library.json` is provided, so it works from `lib/` or `lib_deps`.

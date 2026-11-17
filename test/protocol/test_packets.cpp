@@ -6,8 +6,8 @@
 
 #include <cstddef>
 
-#include "gait_core/gait_config.hpp"
-#include "hexapod_protocol/packets.h"
+#include "gait_core/locomotion/gait_config.hpp"
+#include "gait_core/protocol/packets.h"
 
 extern "C" {
 size_t hexapod_c_control_size(void);

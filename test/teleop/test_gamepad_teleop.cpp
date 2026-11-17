@@ -2,20 +2,20 @@
 
 #include <gtest/gtest.h>
 
-#include "hexapod_protocol/packets.h"
-#include "hexapod_teleop/gamepad_teleop.hpp"
+#include "gait_core/protocol/packets.h"
+#include "gait_core/teleop/gamepad_teleop.hpp"
 
-using hexapod_teleop::Feature;
-using hexapod_teleop::GamepadState;
-using hexapod_teleop::GamepadTeleop;
-using hexapod_teleop::RobotState;
-using hexapod_teleop::TeleopOutput;
+using gait_core::teleop::Feature;
+using gait_core::teleop::GamepadState;
+using gait_core::teleop::GamepadTeleop;
+using gait_core::teleop::RobotState;
+using gait_core::teleop::TeleopOutput;
 
 static_assert(static_cast<int>(Feature::TerrainAdaptation) == FEATURE_TERRAIN_ADAPTATION, "");
 static_assert(static_cast<int>(Feature::WalkLeveling) == FEATURE_WALK_LEVELING, "");
 static_assert(static_cast<int>(Feature::LoadBalancing) == FEATURE_LOAD_BALANCING, "");
 static_assert(static_cast<int>(Feature::TiltLeveling) == FEATURE_TILT_LEVELING, "");
-static_assert(hexapod_teleop::NUM_FEATURES == NUM_FEATURES, "");
+static_assert(gait_core::teleop::NUM_FEATURES == NUM_FEATURES, "");
 
 namespace {
 
@@ -185,7 +185,7 @@ TEST(GamepadTeleop, ResetForgetsHeldButtons) {
 }
 
 TEST(StepHeight, AddsUpWhileMovingAndStaysInRange) {
-    using hexapod_teleop::stepHeight;
+    using gait_core::teleop::stepHeight;
     // No earlier target: from where the body is
     EXPECT_FLOAT_EQ(stepHeight(0.12f, std::nullopt, 1, 0.01f, 0.06f, 0.16f), 0.13f);
     // Still on its way to 0.13: from the target, so quick presses add up

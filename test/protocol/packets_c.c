@@ -2,7 +2,7 @@
  * offsets so the C++ test can check C and C++ agree on the layout. */
 #include <stddef.h>
 
-#include "hexapod_protocol/packets.h"
+#include "gait_core/protocol/packets.h"
 
 size_t hexapod_c_control_size(void) { return sizeof(ControlPacket); }
 size_t hexapod_c_hex_size(void) { return sizeof(HexPacket); }

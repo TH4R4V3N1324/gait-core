@@ -4,9 +4,9 @@
 #include <algorithm>
 #include <type_traits>
 
-#include "gait_core/robot_definition.hpp"
+#include "gait_core/robot/robot_definition.hpp"
 #include "gait_core/types.hpp"
-#include "gait_core_robots/explorer.hpp"
+#include "gait_core/robots/explorer.hpp"
 
 /**
  * @brief Explorer, the robot most tests run (the gait core has none built in)

@@ -1,10 +1,10 @@
-#include "hexapod_behaviour/battery_monitor.hpp"
+#include "gait_core/behaviour/battery_monitor.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 
-namespace hexapod_behaviour {
+namespace gait_core::behaviour {
 
 using gait_core::toSeconds;
 
@@ -132,4 +132,4 @@ void BatteryMonitor::levelChanged(BatteryLevel previous, Scalar voltage) {
     }
 }
 
-}  // namespace hexapod_behaviour
+}  // namespace gait_core::behaviour

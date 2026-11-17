@@ -8,15 +8,15 @@
 #include <utility>
 #include <vector>
 
-#include "hexapod_behaviour/battery_monitor.hpp"
+#include "gait_core/behaviour/battery_monitor.hpp"
 
 using gait_core::LogLevel;
 using gait_core::Scalar;
 using gait_core::Timestamp;
-using hexapod_behaviour::BatteryLevel;
-using hexapod_behaviour::BatteryMonitor;
-using hexapod_behaviour::BatteryParams;
-using hexapod_behaviour::BatteryStatus;
+using gait_core::behaviour::BatteryLevel;
+using gait_core::behaviour::BatteryMonitor;
+using gait_core::behaviour::BatteryParams;
+using gait_core::behaviour::BatteryStatus;
 
 namespace {
 

@@ -10,10 +10,10 @@
 #include <new>
 #include <vector>
 
-#include "gait_core/chain_kinematics.hpp"
-#include "gait_core/gait_engine.hpp"
-#include "gait_core/robot_definition.hpp"
-#include "hexapod_behaviour/battery_monitor.hpp"
+#include "gait_core/kinematics/chain_kinematics.hpp"
+#include "gait_core/locomotion/gait_engine.hpp"
+#include "gait_core/robot/robot_definition.hpp"
+#include "gait_core/behaviour/battery_monitor.hpp"
 
 namespace {
 std::atomic<long> allocations{0};
@@ -174,8 +174,8 @@ TEST(NoHeap, RunningTheGaitNeverAllocates) {
 }
 
 TEST(NoHeap, TheBatteryMonitorNeverAllocates) {
-    using hexapod_behaviour::BatteryLevel;
-    hexapod_behaviour::BatteryMonitor battery(2);
+    using gait_core::behaviour::BatteryLevel;
+    gait_core::behaviour::BatteryMonitor battery(2);
     int logs = 0;
     battery.log = [&logs](LogLevel, const char*) { ++logs; };
 

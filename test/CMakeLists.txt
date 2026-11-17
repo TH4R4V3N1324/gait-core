@@ -12,20 +12,20 @@ endif()
 
 include(GoogleTest)
 
-# Each test is <folder>/<name>.cpp, linked against that folder's library
+# Each test is <area>/<name>.cpp, mirroring include/gait_core/<area>/, linked against its library
 set(GAIT_TESTS
-  gait/test_body_pose
-  gait/test_chain_kinematics
-  gait/test_foot_directions
-  gait/test_foot_force
-  gait/test_gait_engine
-  gait/test_gait_schedule
-  gait/test_yaw_pitch_pitch_leg
-  gait/test_kinematics
-  gait/test_leg_chain
-  gait/test_leg_clearance
-  gait/test_leg_odometry
-  gait/test_robot_definition
+  robot/test_gait_schedule
+  robot/test_leg_chain
+  robot/test_robot_definition
+  kinematics/test_chain_kinematics
+  kinematics/test_foot_force
+  kinematics/test_kinematics
+  kinematics/test_yaw_pitch_pitch_leg
+  locomotion/test_body_pose
+  locomotion/test_foot_directions
+  locomotion/test_gait_engine
+  locomotion/test_leg_clearance
+  estimation/test_leg_odometry
 )
 set(BEHAVIOUR_TESTS
   behaviour/test_battery_monitor

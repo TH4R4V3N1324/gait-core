@@ -1,4 +1,4 @@
-#include "gait_core_robots/explorer.hpp"
+#include "gait_core/robots/explorer.hpp"
 
 namespace gait_core::explorer {
 

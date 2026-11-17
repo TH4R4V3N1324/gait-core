@@ -47,17 +47,21 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# Gait library
+# Gait library, by area (include/gait_core/<area>/, src/<area>/):
+#   robot       what a robot is: legs, joint chains, stance, gaits (data only)
+#   kinematics  solving one leg: the LegKinematics interface and its solvers
+#   locomotion  making the robot walk: the engine, gait timing, trajectories, frames
+#   estimation  what the robot measures: leg odometry
 # ---------------------------------------------------------------------------
 add_library(gait_core STATIC
-  src/gait/gait_config.cpp
-  src/gait/gait_pattern.cpp
-  src/gait/gait_engine.cpp
-  src/gait/yaw_pitch_pitch_leg.cpp
-  src/gait/kinematic_solver.cpp
-  src/gait/leg_odometry.cpp
-  src/gait/trajectory_generator.cpp
-  src/gait/chain_kinematics.cpp
+  src/robot/gait_pattern.cpp
+  src/kinematics/chain_kinematics.cpp
+  src/kinematics/kinematic_solver.cpp
+  src/kinematics/yaw_pitch_pitch_leg.cpp
+  src/locomotion/gait_config.cpp
+  src/locomotion/gait_engine.cpp
+  src/locomotion/trajectory_generator.cpp
+  src/estimation/leg_odometry.cpp
 )
 add_library(gait_core::gait_core ALIAS gait_core)
 
@@ -109,7 +113,7 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Robot definitions: real robots built on the gait core, which itself has none built in.
-# Exported as gait_core::robots (gait_core_robots/explorer.hpp: gait_core::explorer::robot()).
+# Exported as gait_core::robots (gait_core/robots/explorer.hpp: gait_core::explorer::robot()).
 # ---------------------------------------------------------------------------
 add_library(gait_core_robots STATIC
   src/robots/explorer.cpp
@@ -123,8 +127,8 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Header-only, dependency-free libraries (no Eigen):
-#   gait_core::protocol  the controller <-> robot packets (hexapod_protocol/packets.h, also valid C)
-#   gait_core::teleop    the gamepad layout every stack shares (hexapod_teleop/gamepad_teleop.hpp)
+#   gait_core::protocol  the controller <-> robot packets (gait_core/protocol/packets.h, also valid C)
+#   gait_core::teleop    the gamepad layout every stack shares (gait_core/teleop/gamepad_teleop.hpp)
 # ---------------------------------------------------------------------------
 add_library(gait_core_protocol INTERFACE)
 add_library(gait_core::protocol ALIAS gait_core_protocol)
