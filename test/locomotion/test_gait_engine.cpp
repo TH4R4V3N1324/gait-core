@@ -38,7 +38,8 @@ public:
     bool estop = false;
     bool servoPower;   // what the engine last asked for
 
-    explicit Robot(const GaitParams& params = GaitParams{}) : engine(params, explorerRobot()), servoPower(params.power_on_startup) {
+    explicit Robot(const GaitParams& params = GaitParams{}, const gait_core::RobotDefinition& definition = explorerRobot())
+        : engine(params, definition), servoPower(params.power_on_startup) {
         // Legs laid out flat at their zeros
         for (int leg = 0; leg < NUM_LEGS; ++leg) {
             feedback.present[leg] = true;
@@ -364,4 +365,30 @@ TEST(GaitEngine, CopiedEngineDoesNotUseTheOriginalsKinematics) {
     for (int leg = 0; leg < NUM_LEGS; ++leg) {
         EXPECT_TRUE(copy.feedback.angles[leg].allFinite()) << "leg " << leg;
     }
+}
+
+TEST(GaitEngine, EachLegStandsAtTheSharedStancePlusItsOffset) {
+    using gait_core::explorer::LEG_FRONT_RIGHT;
+    using gait_core::explorer::LEG_REAR_LEFT;
+    const gait_core::Vec3 offset(static_cast<Scalar>(0.015), static_cast<Scalar>(-0.01), static_cast<Scalar>(0.005));
+    gait_core::RobotDefinition definition = explorerRobot();
+    definition.legs[LEG_FRONT_RIGHT].stanceOffset = offset;
+
+    // Kept through height and reach changes
+    gait_core::GaitConfig config{definition};
+    config.setHeight(static_cast<Scalar>(-0.1));
+    config.setReach(static_cast<Scalar>(0.2));
+    EXPECT_NEAR((config.startPosition[LEG_FRONT_RIGHT] - (config.startPos + offset)).norm(), 0.0, tol(1e-9));
+    EXPECT_NEAR((config.startPosition[LEG_REAR_LEFT] - config.startPos).norm(), 0.0, tol(1e-9));
+
+    // And the robot stands on them
+    Robot robot{GaitParams{}, definition};
+    robot.run(3.0);
+    robot.engine.sit(false);
+    robot.run(6.0);
+    ASSERT_EQ(robot.engine.sitState(), SitState::STANDING);
+    const gait_core::YawPitchPitchLeg leg{definition.legs[0]};
+    const gait_core::Vec3 stance = robot.engine.gaitConfig().startPos;
+    EXPECT_NEAR((leg.fk(robot.feedback.angles[LEG_FRONT_RIGHT]) - (stance + offset)).norm(), 0.0, 1e-3);
+    EXPECT_NEAR((leg.fk(robot.feedback.angles[LEG_REAR_LEFT]) - stance).norm(), 0.0, 1e-3);
 }

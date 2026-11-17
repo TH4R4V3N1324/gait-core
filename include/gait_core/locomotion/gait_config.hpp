@@ -74,7 +74,8 @@ public:
     Scalar maxStride;
     Vec3 homePos;
     Vec3 startPos;
-    std::array<Vec3, kMaxLegs> startPosition;   // indexed by leg number, 0..numLegs - 1
+    std::array<Vec3, kMaxLegs> startPosition;   // indexed by leg number, 0..numLegs - 1: startPos + stanceOffset
+    std::array<Vec3, kMaxLegs> stanceOffset;    // each leg's LegDefinition::stanceOffset
     uint8_t currentGait = 0;                    // index into the robot's gaits
     Mode currentMode = MODE_NORMAL;
     bool gaitChangeRequested = false;
@@ -88,6 +89,8 @@ public:
     void setReach(Scalar reach);
 
 private:
+    void placeFeet();
+
     int legCount;
     int gaitCount;
     std::array<GaitPattern, kMaxGaits> patterns;

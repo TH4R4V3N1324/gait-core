@@ -177,12 +177,12 @@ bool GaitEngine::reachable(int legNum, const Vec3& target) const {
 }
 
 /**
- * @brief Whether every leg can put its foot at a target, e.g. a seated or standing pose
- * @param[in] target The foot position (leg frame)
+ * @brief Whether every leg can put its foot at a shared pose, e.g. seated or standing
+ * @param[in] target The foot position (leg frame), before each leg's stanceOffset is added
 */
 bool GaitEngine::everyLegReaches(const Vec3& target) const {
     for (int legNum = 0; legNum < numLegs(); ++legNum) {
-        if (!reachable(legNum, target)) {
+        if (!reachable(legNum, target + config.stanceOffset[legNum])) {
             return false;
         }
     }

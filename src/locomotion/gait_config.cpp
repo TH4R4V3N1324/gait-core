@@ -12,7 +12,11 @@ GaitConfig::GaitConfig(const RobotDefinition& geometry)
       legCount(geometry.numLegs),
       gaitCount(std::clamp(geometry.numGaits, 0, kMaxGaits)),
       patterns(geometry.gaits) {
-    startPosition.fill(startPos);
+    stanceOffset.fill(Vec3::Zero());
+    for (int leg = 0; leg < numLegs(); ++leg) {
+        stanceOffset[leg] = geometry.legs[leg].stanceOffset;
+    }
+    placeFeet();
     for (int gait = 0; gait < gaitCount; ++gait) {
         if (!patterns[gait].schedule(legCount, schedules[gait])) {
             schedules[gait] = GaitSchedule{};
@@ -86,15 +90,13 @@ void GaitConfig::setMode(Mode mode) {
 }
 
 /**
- * @brief Set the height of the hexapod and update start positions accordingly
+ * @brief Set the body height and update start positions accordingly
  * @param[in] height The new height to set (m, negative = feet below the hips)
 */
 void GaitConfig::setHeight(Scalar height) {
     currentHeight = height;
     startPos.z() = currentHeight;
-    for (int leg = 0; leg < numLegs(); ++leg) {
-        startPosition[leg] = startPos;
-    }
+    placeFeet();
 }
 
 /**
@@ -103,8 +105,16 @@ void GaitConfig::setHeight(Scalar height) {
 */
 void GaitConfig::setReach(Scalar reach) {
     startPos.x() = reach;
+    placeFeet();
+}
+
+/**
+ * @brief Each leg's start position: the shared stance plus that leg's offset
+*/
+void GaitConfig::placeFeet() {
+    startPosition.fill(startPos);
     for (int leg = 0; leg < numLegs(); ++leg) {
-        startPosition[leg] = startPos;
+        startPosition[leg] = startPos + stanceOffset[leg];
     }
 }
 

@@ -26,7 +26,11 @@ struct LegDefinition {
     int numJoints = 0;
     std::array<JointDefinition, kMaxJointsPerLeg> joints;   // body to foot
     Vec3 foot;                                              // m, last joint to foot
-    LegSolver solver = LegSolver::Chain;                    // which kinematics to use for this leg  
+    LegSolver solver = LegSolver::Chain;                    // which kinematics to use for this leg
+    // m, leg frame: where this leg's foot stands relative to the robot's shared stance
+    // (standReach, 0, standHeight). Kept through height and reach changes, sitting included.
+    // Zero for legs that all stand alike, e.g. a radially symmetric hexapod.
+    Vec3 stanceOffset = Vec3::Zero();
 };
 
 } // namespace gait_core

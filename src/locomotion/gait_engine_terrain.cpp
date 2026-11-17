@@ -29,7 +29,6 @@ bool GaitEngine::forcesValid() {
  *       force data, the offsets ease back to zero.
 */
 void GaitEngine::adaptToTerrain(Scalar dt) {
-    const Vec3 nominal = config.startPosition.at(0);  // all legs share the start height
     if (!p.terrain_adaptation || !forcesValid()) {
         seeking.fill(false);
         landing_check.fill(false);
@@ -59,7 +58,7 @@ void GaitEngine::adaptToTerrain(Scalar dt) {
                 // Touched down early: plant the foot here
                 touchdown_ticks[legNum] = 0;
                 leg_swinging[legNum] = false;
-                terrain_offset[legNum] = std::clamp(current_leg_positions[legNum].z() - nominal.z(),
+                terrain_offset[legNum] = std::clamp(current_leg_positions[legNum].z() - config.startPosition.at(legNum).z(),
                     -p.max_step_height, p.max_step_height);
                 emit(LogLevel::Debug, "Leg %d touched down %.1f mm high", legNum + 1,
                     static_cast<double>(terrain_offset[legNum] * 1000));
