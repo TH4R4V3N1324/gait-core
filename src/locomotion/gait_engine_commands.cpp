@@ -9,15 +9,15 @@ using namespace engine_internal;
 CommandResult GaitEngine::setGait(uint8_t gait) {
     CommandResult result;
     // An index past the robot's list would give an empty schedule, and phase % 0
-    if (gait >= config.numGaits()) {
-        setMessage(result, "Gait %d is not one of this robot's %d gaits", gait, config.numGaits());
+    if (gait >= config().numGaits()) {
+        setMessage(result, "Gait %d is not one of this robot's %d gaits", gait, config().numGaits());
         emit(LogLevel::Warn, "%s", result.message);
         return result;
     }
-    config.setGait(gait);
-    emit(LogLevel::Info, "Gait %d (%s) requested", gait, config.gaitName(gait));
+    config().setGait(gait);
+    emit(LogLevel::Info, "Gait %d (%s) requested", gait, config().gaitName(gait));
     result.success = true;
-    setMessage(result, "Gait %d (%s) requested, applies at the next step", gait, config.gaitName(gait));
+    setMessage(result, "Gait %d (%s) requested, applies at the next step", gait, config().gaitName(gait));
     return result;
 }
 
@@ -33,7 +33,7 @@ CommandResult GaitEngine::setMode(uint8_t mode) {
         emit(LogLevel::Warn, "%s", result.message);
         return result;
     }
-    config.setMode(static_cast<Mode>(mode));
+    config().setMode(static_cast<Mode>(mode));
     result.success = true;
     setMessage(result, "Mode changed to %d", mode);
     emit(LogLevel::Info, "%s", result.message);
@@ -85,12 +85,12 @@ CommandResult GaitEngine::sit(bool down) {
                 }
                 stand_height = target_height;
                 // Tilt mode eases the body back to neutral before the sit starts
-                config.setMode(MODE_NORMAL);
-                config.setReach(p.sit_reach);
+                config().setMode(MODE_NORMAL);
+                config().setReach(p.sit_reach);
                 sit_state = SitState::SPREADING;
                 break;
             case SitState::GATHERING:
-                config.setReach(p.sit_reach);
+                config().setReach(p.sit_reach);
                 sit_state = SitState::SPREADING;
                 break;
             case SitState::RAISING:
@@ -124,7 +124,7 @@ CommandResult GaitEngine::sit(bool down) {
                 }
                 break;
             case SitState::SPREADING:
-                config.setReach(stand_reach);
+                config().setReach(stand_reach);
                 sit_state = SitState::GATHERING;
                 break;
             case SitState::STANDING:
@@ -201,7 +201,7 @@ void GaitEngine::cutServoPower() {
     fresh.last_imu_time = last_imu_time;
     fresh.has_imu = has_imu;
     fresh.stand_height = stand_height;
-    fresh.config.setGait(config.currentGait);
+    fresh.config().setGait(config().currentGait);
     fresh.last_throttled_log = last_throttled_log;
     fresh.throttled_log_sent = throttled_log_sent;
     fresh.now_ = now_;
@@ -230,8 +230,8 @@ void GaitEngine::setBodyPose(Scalar roll, Scalar pitch, Scalar yaw, const Vec3& 
  *       shorter than min_phase_duration
 */
 Scalar GaitEngine::maxFootSpeed() const {
-    size_t groups = std::max<size_t>(2, config.getGaitConfig(config.currentGait).size());
-    return 2 * config.maxStride / ((groups - 1) * p.min_phase_duration);
+    size_t groups = std::max<size_t>(2, config().getGaitConfig(config().currentGait).size());
+    return 2 * config().maxStride / ((groups - 1) * p.min_phase_duration);
 }
 
 }  // namespace gait_core

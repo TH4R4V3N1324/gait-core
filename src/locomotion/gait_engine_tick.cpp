@@ -11,20 +11,20 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
     // A leg count the gait schedules can't handle, or a gait that would tip it over: never command,
     // and keep the servos off
     if (!robotSupported()) {
-        const int gait = config.unrunnableGait();
-        if (numLegs() == 0 || config.numGaits() == 0) {
+        const int gait = config().unrunnableGait();
+        if (numLegs() == 0 || config().numGaits() == 0) {
             emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error, "Robot has no legs or no gaits: it won't move");
         } else if (gait < 0) {
             const int unstable = unstableGait();
             emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error,
                 "Gait %d (%s) can leave the centre of mass %.0f mm from the edge of its feet, under "
                 "min_stability_margin (%.0f mm): it won't move. Set allow_unstable_gaits to run it anyway",
-                unstable, config.gaitName(static_cast<uint8_t>(unstable)),
+                unstable, config().gaitName(static_cast<uint8_t>(unstable)),
                 static_cast<double>(gaitStabilityMargin(static_cast<uint8_t>(unstable)) * 1000),
                 static_cast<double>(p.min_stability_margin * 1000));
         } else {
             emitThrottled(LOG_UNSUPPORTED_ROBOT, 5, LogLevel::Error,
-                "Gait %d (%s) can't run on this robot's %d legs: it won't move", gait, config.gaitName(static_cast<uint8_t>(gait)), numLegs());
+                "Gait %d (%s) can't run on this robot's %d legs: it won't move", gait, config().gaitName(static_cast<uint8_t>(gait)), numLegs());
         }
         output.commanded = false;
         output.servoPower = false;
@@ -68,10 +68,10 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
     // Glide towards the height setHeight asked for, moving every foot by the same amount. Planted
     // feet follow the start positions; swings, the last commanded positions (which a swing restarts
     // from) and tilt mode's ground points carry their own heights, so they're shifted too.
-    if (config.currentHeight != target_height) {
+    if (config().currentHeight != target_height) {
         const Scalar step = p.height_rate * dt;
-        const Scalar delta = std::clamp(target_height - config.currentHeight, -step, step);
-        config.setHeight(config.currentHeight + delta);
+        const Scalar delta = std::clamp(target_height - config().currentHeight, -step, step);
+        config().setHeight(config().currentHeight + delta);
         for (int legNum = 0; legNum < numLegs(); ++legNum) {
             current_leg_positions[legNum].z() += delta;
             swing_start[legNum].z() += delta;
@@ -81,8 +81,8 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
     }
 
     // Tilt mode, or easing the body back to neutral after leaving it
-    if (config.currentMode == MODE_TILT || tilt_active) {
-        tilt(dt, config.currentMode != MODE_TILT);
+    if (config().currentMode == MODE_TILT || tilt_active) {
+        tilt(dt, config().currentMode != MODE_TILT);
         return output;
     }
 
@@ -91,7 +91,7 @@ GaitOutput GaitEngine::update(Scalar dt, Timestamp now) {
         return output;
     }
 
-    switch (config.currentMode) {
+    switch (config().currentMode) {
         case MODE_STRAFE:
             current_motion_intent.forward = velocity.vx;
             current_motion_intent.left = velocity.vy;
@@ -185,8 +185,8 @@ bool GaitEngine::startup(Scalar dt) {
         // Into the seated pose, whatever pose the legs start in: the stand up from there is the same
         // as after a sit request
         if (everyLegReaches(Vec3(p.sit_reach, 0, -p.sit_height)) && everyLegReaches(Vec3(p.sit_reach, 0, stand_height))) {
-            config.setReach(p.sit_reach);
-            config.setHeight(-p.sit_height);
+            config().setReach(p.sit_reach);
+            config().setHeight(-p.sit_height);
             target_height = -p.sit_height;
             emit(LogLevel::Info, "Moving legs from their measured positions to the seated pose");
         } else {
@@ -201,14 +201,14 @@ bool GaitEngine::startup(Scalar dt) {
     }
 
     phase = 0;
-    config.setHeight(config.currentHeight);
+    config().setHeight(config().currentHeight);
 
     // Straight line from the measured position to the start position
     auto targetsAt = [this](Scalar progress) {
         std::array<Vec3, kMaxLegs> targets;
         for (int leg = 0; leg < numLegs(); ++leg) {
             const Vec3& start = startup_start_positions[leg];
-            targets[leg] = start + (config.startPosition.at(leg) - start) * progress;
+            targets[leg] = start + (config().startPosition.at(leg) - start) * progress;
         }
         return targets;
     };
@@ -326,14 +326,14 @@ void GaitEngine::sitTick(Scalar dt) {
             }
             break;
         case SitState::LOWERING:
-            if (config.currentHeight == target_height) {
+            if (config().currentHeight == target_height) {
                 sit_state = SitState::SEATED;
                 emit(LogLevel::Info, "Seated");
             }
             break;
         case SitState::RAISING:
-            if (config.currentHeight == target_height) {
-                config.setReach(stand_reach);
+            if (config().currentHeight == target_height) {
+                config().setReach(stand_reach);
                 sit_state = SitState::GATHERING;
             }
             break;

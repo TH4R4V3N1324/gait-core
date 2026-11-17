@@ -53,15 +53,15 @@ bool fitsYawPitchPitch(const LegDefinition& leg) {
 
 GaitEngine::GaitEngine(const GaitParams& params, const RobotDefinition& geometry)
     : p(params), robot(withinCapacity(geometry)), trajectoryGen(robot),
-      config(robot), servo_power(params.power_on_startup) {
+      servo_power(params.power_on_startup) {
     if (p.initial_mode >= NUM_MODES) {
         p.initial_mode = MODE_NORMAL;
     }
-    config.setMode(static_cast<Mode>(p.initial_mode));
+    config().setMode(static_cast<Mode>(p.initial_mode));
     trajectoryGen.swingLift = p.step_height;
     trajectoryGen.swingEasing = p.swing_easing;
-    target_height = config.currentHeight;
-    stand_reach = config.startPos.x();
+    target_height = config().currentHeight;
+    stand_reach = config().startPos.x();
     stand_height = target_height;
 
     current_leg_positions.fill(Vec3::Zero());
@@ -86,7 +86,7 @@ GaitEngine::GaitEngine(const GaitParams& params, const RobotDefinition& geometry
         // A default JointVec is empty, not zero: size every leg's command to its joint count
         output.joints[legNum] = JointVec::Zero(kinematics(legNum).numJoints());
     }
-    for (int gait = 0; gait < config.numGaits(); ++gait) {
+    for (int gait = 0; gait < config().numGaits(); ++gait) {
         gait_margin[gait] = computeGaitMargin(static_cast<uint8_t>(gait));
     }
 }
@@ -185,7 +185,7 @@ bool GaitEngine::reachable(int legNum, const Vec3& target) const {
 */
 bool GaitEngine::everyLegReaches(const Vec3& target) const {
     for (int legNum = 0; legNum < numLegs(); ++legNum) {
-        if (!reachable(legNum, target + config.stanceOffset[legNum])) {
+        if (!reachable(legNum, target + config().stanceOffset[legNum])) {
             return false;
         }
     }
@@ -219,7 +219,7 @@ Scalar GaitEngine::plantedMargin(const std::array<Vec3, kMaxLegs>& feet) const {
  *       the nearest edge).
 */
 Scalar GaitEngine::computeGaitMargin(uint8_t gait) const {
-    const GaitSchedule schedule = config.getGaitConfig(gait);
+    const GaitSchedule schedule = config().getGaitConfig(gait);
     if (schedule.empty()) {
         return -std::numeric_limits<Scalar>::infinity();
     }
@@ -229,22 +229,22 @@ Scalar GaitEngine::computeGaitMargin(uint8_t gait) const {
         for (int legNum = 0; legNum < numLegs(); ++legNum) {
             feet[legNum] = schedule.swingsIn(legNum, phase)
                 ? Vec3::Constant(std::numeric_limits<Scalar>::quiet_NaN())
-                : config.startPosition[legNum];
+                : config().startPosition[legNum];
         }
         worst = std::min(worst, plantedMargin(feet));
     }
-    return worst - config.maxStride;
+    return worst - config().maxStride;
 }
 
 Scalar GaitEngine::gaitStabilityMargin(uint8_t gait) const {
-    return gait < config.numGaits() ? gait_margin[gait] : -std::numeric_limits<Scalar>::infinity();
+    return gait < config().numGaits() ? gait_margin[gait] : -std::numeric_limits<Scalar>::infinity();
 }
 
 int GaitEngine::unstableGait() const {
     if (p.allow_unstable_gaits) {
         return -1;
     }
-    for (int gait = 0; gait < config.numGaits(); ++gait) {
+    for (int gait = 0; gait < config().numGaits(); ++gait) {
         if (gait_margin[gait] < p.min_stability_margin) {
             return gait;
         }

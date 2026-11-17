@@ -508,3 +508,16 @@ TEST(GaitEngine, TiltShiftGoesAllTheWayWhenTheFeetAllowIt) {
     robot.run(3.0);
     EXPECT_LT(standingMargin(robot, explorerRobot()), before - 0.03) << "most of the 40 mm shift happened";
 }
+
+TEST(GaitEngine, TrajectoriesFollowAHeightChange) {
+    // The trajectory generator once kept its own copy of the stance, so it planned feet at the
+    // robot's original height after setHeight
+    Robot robot = standingRobot();
+    const Scalar original = robot.engine.gaitConfig().currentHeight;
+    ASSERT_TRUE(robot.engine.setHeight(static_cast<Scalar>(-0.09)).success);
+    robot.run(4.0);
+    const Scalar height = robot.engine.gaitConfig().currentHeight;
+    ASSERT_GT(std::abs(height - original), 0.02) << "the body moved to its new height";
+    EXPECT_NEAR(robot.engine.trajectory().swingTarget(0, gait_core::Vec3::Zero()).z(), height, tol(1e-9));
+    EXPECT_NEAR(robot.engine.trajectory().config().startPosition[0].z(), height, tol(1e-9));
+}

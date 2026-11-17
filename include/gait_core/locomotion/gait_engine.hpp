@@ -237,7 +237,7 @@ public:
     // ---- State ------------------------------------------------------------------------------
     GaitParams& params() { return p; }
     const GaitParams& params() const { return p; }
-    const GaitConfig& gaitConfig() const { return config; }
+    const GaitConfig& gaitConfig() const { return trajectoryGen.config(); }
     const TrajectoryGenerator& trajectory() const { return trajectoryGen; }
     const LegOdometry& odometry() const { return legOdometry; }
     SitState sitState() const { return sit_state; }
@@ -270,7 +270,7 @@ public:
     int unstableGait() const;
     // Whether the engine can run every one of the robot's gaits on its legs (see GaitPattern::schedule),
     // and stably unless allowed otherwise. If not, it never moves and keeps the servos off.
-    bool robotSupported() const { return numLegs() > 0 && config.unrunnableGait() < 0 && unstableGait() < 0; }
+    bool robotSupported() const { return numLegs() > 0 && config().unrunnableGait() < 0 && unstableGait() < 0; }
     // The solver each leg uses (unless setLegKinematics overrides it): its definition's, except
     // that a leg asking for YawPitchPitch whose chain isn't that shape gets Chain
     LegSolver legSolver(int legNum) const { return leg_solver[legNum]; }
@@ -279,7 +279,10 @@ private:
     GaitParams p;
     RobotDefinition robot;   // kept so cutting servo power can rebuild the engine
     TrajectoryGenerator trajectoryGen;
-    GaitConfig config;
+    // The robot's gaits, stance and modes live in trajectoryGen, which steps the feet from them;
+    // one copy, so a height or reach change reaches the trajectories too
+    GaitConfig& config() { return trajectoryGen.config(); }
+    const GaitConfig& config() const { return trajectoryGen.config(); }
 
     // Every leg's kinematics: an override from setLegKinematics (not owned) if set, otherwise the
     // leg's analytic solver or its chain, as leg_solver says, both built from its definition. The

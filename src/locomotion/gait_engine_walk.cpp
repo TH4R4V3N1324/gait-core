@@ -50,19 +50,19 @@ void GaitEngine::performLegStep(Scalar dt, bool idle, bool handlePhaseTransition
  * @note Only call between phases, when no leg is mid-swing. Restarts at the new gait's first phase.
 */
 void GaitEngine::applyPendingGait() {
-    if (!config.gaitChangeRequested) {
+    if (!config().gaitChangeRequested) {
         return;
     }
-    config.gaitChangeRequested = false;
-    if (config.pendingGait == config.currentGait) {
+    config().gaitChangeRequested = false;
+    if (config().pendingGait == config().currentGait) {
         return;
     }
-    config.currentGait = config.pendingGait;
-    trajectoryGen.gaitState.config = config.getGaitConfig(config.currentGait);
+    config().currentGait = config().pendingGait;
+    trajectoryGen.gaitState.config = config().getGaitConfig(config().currentGait);
     phase = 0;
     phase_progress = 0;
     leg_swinging.fill(false);
-    emit(LogLevel::Info, "Gait changed to %s", config.gaitName(config.currentGait));
+    emit(LogLevel::Info, "Gait changed to %s", config().gaitName(config().currentGait));
 }
 
 bool GaitEngine::isSwinging(int legNum) const {
@@ -70,7 +70,7 @@ bool GaitEngine::isSwinging(int legNum) const {
 }
 
 Vec3 GaitEngine::plantedStart(int legNum) {
-    return config.startPosition.at(legNum) + Vec3(0, 0, terrain_offset[legNum]);
+    return config().startPosition.at(legNum) + Vec3(0, 0, terrain_offset[legNum]);
 }
 
 /**
@@ -250,7 +250,7 @@ void GaitEngine::walk(Scalar dt) {
     const size_t groups = std::max<size_t>(2, trajectoryGen.gaitState.config.size());
     current_phase_duration = p.phase_duration;
     if (footSpeed > S(1e-6)) {
-        const Scalar strideLimitedDuration = 2 * config.maxStride / ((groups - 1) * footSpeed);
+        const Scalar strideLimitedDuration = 2 * config().maxStride / ((groups - 1) * footSpeed);
         current_phase_duration = std::clamp(strideLimitedDuration, p.min_phase_duration, p.phase_duration);
     }
     const Scalar stanceTime = (groups - 1) * current_phase_duration;
@@ -311,7 +311,7 @@ void GaitEngine::walk(Scalar dt) {
         for (int legNum = 0; legNum < numLegs(); ++legNum) {
             // The foot is where its swing aimed: that's its ground now
             if (leg_swinging[legNum] && p.terrain_adaptation) {
-                terrain_offset[legNum] = std::clamp(current_leg_positions[legNum].z() - config.startPosition.at(legNum).z(),
+                terrain_offset[legNum] = std::clamp(current_leg_positions[legNum].z() - config().startPosition.at(legNum).z(),
                     -p.max_step_height, p.max_step_height);
             }
             // A foot that has just landed takes a moment to load up: check again once the weight

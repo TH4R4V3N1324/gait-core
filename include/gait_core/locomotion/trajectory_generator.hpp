@@ -49,6 +49,11 @@ public:
 
     GaitState gaitState;
 
+    // The gaits, stance and stride the trajectories are planned from. A GaitEngine changes height,
+    // reach and gait through this, so the trajectories always see the current ones.
+    GaitConfig& config() { return gaitConfig; }
+    const GaitConfig& config() const { return gaitConfig; }
+
     void GenerateTrajectories(
         const std::array<Vec3, kMaxLegs>& swingTargets,
         const std::array<Vec3, kMaxLegs>& stanceTargets,

@@ -15,8 +15,8 @@ using namespace engine_internal;
 bool GaitEngine::tiltFeasible(const BodyPose& pose, std::array<Vec3, kMaxLegs>& targets) {
     for (int legNum = 0; legNum < numLegs(); ++legNum) {
         targets[legNum] = trajectoryGen.posedFoot(legNum, tilt_ground_feet[legNum], pose);
-        const Vec3 offset = targets[legNum] - config.startPosition.at(legNum);
-        if (std::hypot(offset.x(), offset.y()) > config.maxStride) {
+        const Vec3 offset = targets[legNum] - config().startPosition.at(legNum);
+        if (std::hypot(offset.x(), offset.y()) > config().maxStride) {
             return false;
         }
         if (!reachable(legNum, targets[legNum])) {
@@ -122,7 +122,7 @@ void GaitEngine::updateWalkLeveling(Scalar dt) {
     pitch = walk_level_pitch + std::clamp(pitch - walk_level_pitch, -maxStep, maxStep);
 
     // Scale back towards level until every foot is reachable (level always is)
-    const Vec3 pivot(0, 0, config.currentHeight);
+    const Vec3 pivot(0, 0, config().currentHeight);
     auto fits = [&](Scalar scale) {
         const BodyPose pose = TrajectoryGenerator::rotationAbout(roll * scale, pitch * scale, pivot);
         for (int legNum = 0; legNum < numLegs(); ++legNum) {
@@ -286,7 +286,7 @@ void GaitEngine::tilt(Scalar dt, bool exiting) {
         walk_level_roll = tilt_saved_roll;
         walk_level_pitch = tilt_saved_pitch;
         walk_level = TrajectoryGenerator::rotationAbout(walk_level_roll, walk_level_pitch,
-            Vec3(0, 0, config.currentHeight));
+            Vec3(0, 0, config().currentHeight));
         current_leg_positions = tilt_saved_feet;
         phase = 0;
         phase_progress = 0;

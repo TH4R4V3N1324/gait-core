@@ -244,7 +244,7 @@ bool GaitEngine::updateLegOdometry(Timestamp stamp) {
  *         climbing (floorRise does)
 */
 Scalar GaitEngine::footprintHeight() const {
-    return -config.currentHeight + tilt_applied.translation.z();
+    return -config().currentHeight + tilt_applied.translation.z();
 }
 
 /**
