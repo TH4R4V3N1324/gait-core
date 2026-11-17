@@ -18,8 +18,8 @@ namespace {
  * @param maxVelocity The fastest its servo may turn (rad/s); infinity for GaitParams::max_joint_speed
 */
 JointDefinition revolute(const Vec3& origin, const Vec3& axis, double lower, double upper,
-                         double maxVelocity = std::numeric_limits<double>::infinity()) {
-    return {origin, axis, static_cast<Scalar>(lower), static_cast<Scalar>(upper), static_cast<Scalar>(maxVelocity)};
+                         Scalar maxVelocity = std::numeric_limits<Scalar>::infinity()) {
+    return {origin, axis, static_cast<Scalar>(lower), static_cast<Scalar>(upper), maxVelocity};
 }
 
 /**
@@ -40,9 +40,13 @@ RobotDefinition robot() {
 
     // The femur and tibia ranges match femur_lower/upper and tibia_lower/upper in the URDF (from the
     // CAD meshes); the coxa keeps +-1.4 rad until its range is worked out
-    const JointDefinition coxa = revolute(v(0, 0, 0), v(0, 0, 1), -1.4, 1.4);
-    const JointDefinition femur = revolute(v(0.063, 0, 0), v(0, 1, 0), -1.6, 1.4);    // + lowers the foot
-    const JointDefinition tibia = revolute(v(0.100, 0, 0), v(0, 1, 0), -0.78, 2.63);  // + folds the knee
+    // Speed limits: each servo's no-load top speed on a 3S pack (11.1 V nominal). The URDF's are the
+    // 12 V figures (4.7 and 7.9 rad/s), which the battery can't reach.
+    constexpr Scalar ST3215_SPEED = Scalar(4.36);   // rad/s, coxa and tibia (0.222 s/60 deg at 12 V)
+    constexpr Scalar STS3250_SPEED = Scalar(7.28);  // rad/s, femur (0.133 s/60 deg at 12 V)
+    const JointDefinition coxa = revolute(v(0, 0, 0), v(0, 0, 1), -1.4, 1.4, ST3215_SPEED);
+    const JointDefinition femur = revolute(v(0.063, 0, 0), v(0, 1, 0), -1.6, 1.4, STS3250_SPEED);    // + lowers the foot
+    const JointDefinition tibia = revolute(v(0.100, 0, 0), v(0, 1, 0), -0.78, 2.63, ST3215_SPEED);  // + folds the knee
 
     // Coxa joint yaw (rad) and position (m), matching the URDF: the middle legs 0.11836 m out
     // to the side, the corner legs at 45 degrees from (0.11916, 0.08952) on the slimmer body

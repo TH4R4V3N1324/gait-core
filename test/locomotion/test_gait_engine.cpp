@@ -733,15 +733,17 @@ TEST(GaitEngine, AJointsOwnSpeedLimitHoldsOnlyThatJointBack) {
 TEST(GaitEngine, JointSpeedLimitsOverrideTheGlobalOne) {
     // A global limit far too slow to walk at, overridden on every joint by the default's 4 rad/s,
     // walks exactly as the default does
+    // (explorer's own limits cleared, so the global ones apply where the test wants them)
+    const double unset = std::numeric_limits<double>::infinity();
     GaitParams slow;
     slow.max_joint_speed = static_cast<Scalar>(0.3);
     Robot overridden{slow, explorerWithJointLimit(-1, 4.0)};
-    Robot reference;
+    Robot reference{GaitParams{}, explorerWithJointLimit(-1, unset)};
     walkAndMeasureJointSpeeds(overridden, 3.0);
     walkAndMeasureJointSpeeds(reference, 3.0);
     EXPECT_NEAR(overridden.engine.odometry().x(), reference.engine.odometry().x(), tol(1e-9));
 
-    Robot globallySlow{slow, explorerRobot()};
+    Robot globallySlow{slow, explorerWithJointLimit(-1, unset)};
     walkAndMeasureJointSpeeds(globallySlow, 3.0);
     EXPECT_LT(globallySlow.engine.odometry().x(), reference.engine.odometry().x() - 0.05);
 }
