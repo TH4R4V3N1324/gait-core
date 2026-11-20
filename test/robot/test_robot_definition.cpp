@@ -202,6 +202,21 @@ TEST(LegSolver, ALegDefinedWithoutOneUsesItsChain) {
     }
 }
 
+TEST(LegSolver, RoundingNoiseInAnOffsetKeepsTheAnalyticSolver) {
+    // Offsets read from a model file come out a hair off zero
+    gait_core::RobotDefinition robot = explorerRobot();
+    for (int leg = 0; leg < robot.numLegs; ++leg) {
+        robot.legs[leg].joints[0].origin.x() += static_cast<gait_core::Scalar>(1e-17);
+        robot.legs[leg].joints[1].origin.y() += static_cast<gait_core::Scalar>(1e-17);
+        robot.legs[leg].joints[2].origin.z() -= static_cast<gait_core::Scalar>(1e-17);
+        robot.legs[leg].foot.y() += static_cast<gait_core::Scalar>(1e-9);
+    }
+    const GaitEngine engine{gait_core::GaitParams{}, robot};
+    for (int leg = 0; leg < engine.numLegs(); ++leg) {
+        EXPECT_EQ(engine.legSolver(leg), gait_core::LegSolver::YawPitchPitch) << "leg " << leg;
+    }
+}
+
 TEST(LegSolver, TheAnalyticSolverOnlyWhereItFits) {
     // YawPitchPitchLeg is a coxa about z then femur and tibia about y, all along x: any lengths, but
     // anything else asking for it gets its chain instead of the wrong maths

@@ -450,6 +450,7 @@ private:
     Scalar sway_hold_time = 0;   // s the current phase has waited for the sway
     bool sway_holding = false;   // waiting at a phase's start for the body to sway over the feet
     BodyPose walkPose() const;
+    void easeSway(const Vec2& goal, Scalar dt);
     bool updateSway(Scalar dt, bool idle);
 
     void cutServoPower();

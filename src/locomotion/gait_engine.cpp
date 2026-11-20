@@ -41,9 +41,10 @@ bool fitsYawPitchPitch(const LegDefinition& leg) {
         return (v.normalized() - direction).norm() < S(1e-6);
     };
     auto outward = [](const Vec3& offset) {
-        return offset.y() == 0 && offset.z() == 0 && offset.x() > 0;
+        // Offsets read from a model file carry rounding noise (1e-17, say) in the zero components
+        return std::abs(offset.y()) < S(1e-6) && std::abs(offset.z()) < S(1e-6) && offset.x() > S(1e-6);
     };
-    return along(leg.joints[0].axis, Vec3::UnitZ()) && leg.joints[0].origin.isZero() &&
+    return along(leg.joints[0].axis, Vec3::UnitZ()) && (leg.joints[0].origin.array().abs() < S(1e-6)).all() &&
         along(leg.joints[1].axis, Vec3::UnitY()) && outward(leg.joints[1].origin) &&
         along(leg.joints[2].axis, Vec3::UnitY()) && outward(leg.joints[2].origin) &&
         outward(leg.foot);
@@ -271,6 +272,17 @@ BodyPose GaitEngine::walkPose() const {
 }
 
 /**
+ * @brief Move the body's sway towards a goal, at up to sway_speed
+ * @param[in] goal The sway to move towards (m, body frame)
+ * @param[in] dt The time since the last tick (s)
+*/
+void GaitEngine::easeSway(const Vec2& goal, Scalar dt) {
+    const Vec2 step = goal - sway;
+    const Scalar maxStep = p.sway_speed * dt;
+    sway += step.norm() > maxStep ? Vec2(step * (maxStep / step.norm())) : step;
+}
+
+/**
  * @brief Move the body over the feet planted in the current phase, if the gait sways
  * @param[in] dt The time since the last tick (s)
  * @param[in] idle No velocity command: with every foot down at a phase's start, the sway eases
@@ -280,10 +292,13 @@ BodyPose GaitEngine::walkPose() const {
  *         a phase's length, with a warning.
  * @note The body sways at up to sway_speed towards the nearest point sway_margin inside the feet
  *       that are down this phase, recomputed every tick since they slide back as the body walks.
+ *       A gait that doesn't sway eases off any sway left behind (by gathering the feet at startup,
+ *       or by a swaying gait before it) at the same speed.
 */
 bool GaitEngine::updateSway(Scalar dt, bool idle) {
     sway_holding = false;
     if (!gaitSways(config().currentGait) || trajectoryGen.gaitState.config.empty()) {
+        easeSway(Vec2::Zero(), dt);
         return false;
     }
     std::array<Vec2, kMaxLegs> feet;
@@ -301,9 +316,7 @@ bool GaitEngine::updateSway(Scalar dt, bool idle) {
                            std::max(p.sway_margin, p.min_stability_margin), target);
         goal = target - com;
     }
-    const Vec2 step = goal - sway;
-    const Scalar maxStep = p.sway_speed * dt;
-    sway += step.norm() > maxStep ? Vec2(step * (maxStep / step.norm())) : step;
+    easeSway(goal, dt);
 
     if (idle || phase_progress > 0) {
         sway_hold_time = 0;

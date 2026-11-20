@@ -384,9 +384,7 @@ void GaitEngine::sitTick(Scalar dt) {
     }
 
     // Every foot is down here, so any body sway eases back to centre before the body lowers or rises
-    const Vec2 unsway = -sway;
-    const Scalar maxSway = p.sway_speed * dt;
-    sway += unsway.norm() > maxSway ? Vec2(unsway * (maxSway / unsway.norm())) : unsway;
+    easeSway(Vec2::Zero(), dt);
 
     // Hold the feet where they are; the height glide has already moved them this tick
     sendFootTargets(current_leg_positions, dt);

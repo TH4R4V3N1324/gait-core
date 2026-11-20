@@ -656,6 +656,51 @@ TEST(GaitEngine, SwayReturnsToCentreWhenTheRobotStops) {
     EXPECT_LT(robot.engine.bodySway().norm(), 1e-6);
 }
 
+TEST(GaitEngine, ATrotEasesOffTheSwayLeftByACrawl) {
+    // The trot doesn't sway, but it must not keep walking off-centre by what the crawl left behind
+    GaitParams params;
+    params.allow_unstable_gaits = true;   // a trot on two feet always is
+    Robot robot{params, quadruped()};
+    ASSERT_FALSE(robot.engine.gaitSways(0));
+    ASSERT_TRUE(robot.engine.gaitSways(1));
+    ASSERT_TRUE(robot.engine.setGait(1).success);
+    ASSERT_TRUE(standUp(robot));
+    robot.engine.setVelocity({static_cast<Scalar>(0.03), 0, 0});
+    robot.run(4.0);
+    ASSERT_GT(robot.engine.bodySway().norm(), 0.005) << "swaying while it crawls";
+
+    ASSERT_TRUE(robot.engine.setGait(0).success);
+    robot.run(6.0);
+    ASSERT_EQ(robot.engine.gaitConfig().currentGait, 0);
+    EXPECT_LT(robot.engine.bodySway().norm(), 1e-6) << "still walking, now trotting";
+}
+
+TEST(GaitEngine, ATrotEasesOffTheSwayLeftByGathering) {
+    // Standing up gathers the feet in a crawl, which sways; the trot then starts from wherever that left off
+    gait_core::RobotDefinition definition = quadruped();   // the crawl first, so it gathers in it
+    std::swap(definition.gaits[0], definition.gaits[1]);
+    GaitParams params;
+    params.allow_unstable_gaits = true;
+    Robot robot{params, definition};
+    ASSERT_TRUE(robot.engine.gaitSways(0));
+    ASSERT_FALSE(robot.engine.gaitSways(1));
+    robot.run(3.0);
+    robot.engine.sit(false);
+    Scalar most = 0;
+    for (int i = 0; i < 3000 && robot.engine.sitState() != SitState::STANDING; ++i) {
+        robot.run(0.01);
+        most = std::max(most, robot.engine.bodySway().norm());
+    }
+    ASSERT_EQ(robot.engine.sitState(), SitState::STANDING);
+    ASSERT_GT(most, 0.005) << "gathering the feet swayed the body";
+
+    ASSERT_TRUE(robot.engine.setGait(1).success);
+    robot.engine.setVelocity({0, static_cast<Scalar>(0.03), 0});   // strafing, as when the Go2 fell
+    robot.run(6.0);
+    ASSERT_EQ(robot.engine.gaitConfig().currentGait, 1);
+    EXPECT_LT(robot.engine.bodySway().norm(), 1e-6);
+}
+
 // ---- Per-joint speed limits ------------------------------------------------------------------
 
 namespace {
